@@ -1,0 +1,150 @@
+start: domain_decl* block*
+
+?domain_decl: def_dom | ext_dom | ext_pred | const_decl
+
+// --- Domain Declarations ---
+def_dom: "DefDOM" upper_id ":" type_def set_def "."
+ext_dom: "ExtDOM" upper_id ":" type_def "." 
+       | "ExtDOM" upper_id ":" type_def upper_id "." 
+
+ext_pred: "ExtPred" lower_id ":" pred_sig "."
+pred_sig: "(" type_def ("," type_def)* ")"
+
+const_decl: "Const" lower_id ":" type_def ("=" constant)? "."
+
+// --- Types ---
+type_def: "INT"    -> type_int
+        | "Symbol" -> type_sym
+        | "Tuple" "(" type_def ("," type_def)* ")" -> type_tuple
+        | upper_id -> type_custom
+
+// --- Sets Definitions ---
+set_def: "Set:" constant ("," constant)* -> set_enum
+       | "IntRange:" constant ".." constant -> int_range
+
+// ==========================================
+// Blocks & Statements
+// ==========================================
+block: "[" statement* "]"
+
+?statement: rule | set_constraint
+
+// --- Rules ---
+rule: head_part (":-" body_part)? "."
+
+head_part: pred_atom | choice_head
+choice_head: pred_atom "?"
+
+// No negation right now, so essentially atom
+body_part: literal ("," literal)*
+literal: pred_atom | comparison
+
+// --- Set Constraints ---
+set_constraint: let_expr* foset "."
+
+let_expr: "Let" set_var "=" set_expr "in"
+
+// ==========================================
+// Set Expressions
+// ==========================================
+?set_expr: set_op_expr | set_comprehension | set_var | "EMPTY" -> empty_set
+
+set_pred: "Set_" "{" lower_id "}"
+
+?set_op_expr: "(" SET_BIN_OP set_expr set_expr ")"
+
+// UPDATED: comp_item allows single var or tuple
+set_comprehension: "{" "(" tuple_var ")" "|" "(" tuple_var ")" "in" set_expr "," foset "}"
+
+// comp_item can be: X, 1, (X), (X,Y)
+comp_item: constant_or_var | "(" tuple_var ")"
+
+SET_BIN_OP: "∪" | "∩" | "Δ" | "⊕"
+
+// ==========================================
+// Formulas (FoSet)
+// ==========================================
+?foset: quantified_formula
+      | aggregation
+      | logic_op
+      | set_membership
+      | set_subset
+      | set_partition
+      | literal
+      | boolean_const
+      | "(" foset ")"
+
+quantified_formula: QUANTIFIER upper_id ("," upper_id)* "." foset
+
+aggregation: AGG_OP set_var ["(" tuple_var ")"] AGG_COMP expr
+
+logic_op: "(" LOGIC_PREFIX foset+ ")"
+
+?comparison: infix_comp | prefix_comp
+infix_comp: expr COMP_OP expr
+prefix_comp: "(" COMP_OP expr expr ")"
+
+set_membership: "(" "\\belonging" upper_id set_expr ")"
+set_subset: "(" "\\subset" upper_id set_expr ")"
+set_partition: "(" "\\partition" upper_id set_of_sets ")"
+
+boolean_const: "\\true" -> true_const | "\\false" -> false_const
+
+// ==========================================
+// Arithmetic Expressions
+// ==========================================
+?expr: sum
+
+?sum: product
+    | sum "+" product -> add
+    | sum "-" product -> sub
+
+?product: atom
+    | product "*" atom -> mul
+    | product "/" atom -> div
+
+?atom: constant_or_var
+     | "(" expr ")"
+     | arith_expr
+
+arith_expr: "(" ARITH_OP expr expr ")"
+
+// ==========================================
+// Atoms & Variables
+// ==========================================
+pred_atom: lower_id "(" [arg_list] ")"
+arg_list: expr ("," expr)*
+
+set_var: "{" upper_id"}"   ("(" tuple_var ")")?
+
+tuple_var: constant_or_var ("," constant_or_var)*
+set_of_sets: "{{" upper_id+ "}}"
+
+constant_or_var: constant | upper_id | lower_id
+
+// ==========================================
+// Terminals (Tokens)
+// ==========================================
+UPPER_ID: /[A-Z][a-zA-Z0-9_']*/   
+LOWER_ID: /[a-z][a-zA-Z0-9_']*/
+
+upper_id: UPPER_ID
+lower_id: LOWER_ID
+
+constant: INT | SIGNED_INT
+
+QUANTIFIER: "\\forall" | "∀" | "\\exists" | "∃"
+AGG_OP: "#count" | "#sum" | "#min" | "#max"
+AGG_COMP: "=" | "!=" | "<" | "<=" | ">" | ">=" | "in" | "∊"
+
+COMP_OP: "==" | "!=" | "<" | "<=" | ">" | ">=" | "="
+ARITH_OP: "+" | "-" | "*" | "/"
+LOGIC_PREFIX: "\\and" | "∧" | "\\or" | "∨" | "\\impl" | "→" | "\\neg" | "¬"
+
+%import common.INT
+%import common.SIGNED_INT
+%import common.WS
+%ignore WS
+
+COMMENT: "%" /[^\n]*/
+%ignore COMMENT

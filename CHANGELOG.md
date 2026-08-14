@@ -1,0 +1,16 @@
+# Changelog
+
+All notable changes to SetLaH will be documented in this file.
+
+## [0.1.0rc1] - Unreleased
+
+Initial public prerelease of the SetLaH compiler and command-line interface.
+
+- Package the implementation as `setlah` with a `setlah` console command.
+- Add tested compilation and solving examples.
+- Add Clingo AST execution through `ProgramBuilder`.
+- Add safety guards inferred through arithmetic comparisons.
+- Preserve variables in negated predicates when detecting uniqueness patterns.
+- Constrain runtime dependencies to the tested egglog and Clingo versions.
+- Declare cloudpickle explicitly because egglog 12 imports it at runtime.
+- Add runnable fact instances and an end-to-end check for every Maple-set model.

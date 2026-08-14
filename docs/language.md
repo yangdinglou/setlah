@@ -1,0 +1,86 @@
+# SetLaH Language Guide
+
+SetLaH programs contain domain declarations, external input predicates, and
+blocks of rules or first-order constraints. The compiler lowers these constructs
+to ASP and can either print the result or solve it with Clingo.
+
+## Declarations
+
+```text
+ExtDOM Index: INT.
+DefDOM Size: INT. Set: 1..9.
+ExtPred edge: (Index, Index).
+Const n: INT = 4.
+```
+
+- `ExtDOM` declares a domain supplied by an input fact file as `dom_Type/1`.
+- `DefDOM` defines a domain in the source program.
+- `ExtPred` declares a predicate supplied by an input fact file.
+- `Const` declares a constant.
+
+## Rules
+
+A question mark makes a predicate a choice. A rule without it is deterministic.
+
+```text
+selected(X)? :- available(X).
+reachable(Y) :- reachable(X), edge(X, Y).
+```
+
+Rules and constraints are grouped in square-bracketed blocks:
+
+```text
+[
+    selected(X)? :- available(X).
+    (\exists X. selected(X)).
+]
+```
+
+## Formulae
+
+```text
+\forall X. formula.
+\exists X. formula.
+(\impl antecedent consequent).
+(\and f1 f2 ...).
+(\or f1 f2 ...).
+(\neg formula).
+(= X Y).
+(!= X Y).
+```
+
+Arithmetic terms can appear in comparisons:
+
+```text
+(!= (- R1 R2) (- C1 C2)).
+(= (* 3 X) Y).
+```
+
+## Aggregates
+
+Projection variables appear in parentheses after a set predicate:
+
+```text
+\forall R, C. #count {Set_sudoku}(V) = 1.
+\forall R, V. #count {Set_sudoku}(C) = 1.
+```
+
+For example, the first formula requires exactly one `V` for every `(R, C)`.
+
+## Partitions And Sets
+
+```text
+(\partition Domain {{PredA PredB PredC}}).
+
+Let {A}(X, Y) = { (X, Y) | condition(X, Y) }
+in (\subset A {B}).
+```
+
+A partition covers its domain with mutually exclusive predicates. Set
+comprehensions bind a named set for use by later set constraints.
+
+## Complete Examples
+
+See [the examples guide](../examples/README.md) for executable models and their
+input fact files. Use `setlah SOURCE.sl --print-asp` when developing a model to
+inspect its generated ASP.

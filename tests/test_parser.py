@@ -1,0 +1,42 @@
+import sys
+import os
+
+# Add parent directory to path
+
+from setlah.parsing.parser import Parser
+
+def test_file_parsing(filename='example.sl'):
+    # Path to the example.mylang file (assumed to be in root or same dir)
+    # We look one level up from 'tests/'
+    file_path = os.path.join(os.path.dirname(__file__), 'inputs', filename)
+    
+    if not os.path.exists(file_path):
+        print(f"Error: Could not find {file_path}")
+        return
+
+    print(f"Reading from: {file_path}")
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    print("--- Parsing Content ---")
+    p = Parser()
+    try:
+        ast = p.parse(content)
+        print("✅ Success! AST Generated.")
+        print(f"  - Domains parsed: {len(ast.domains)}")
+        print(f"  - Blocks parsed:  {len(ast.blocks)}")
+        
+        # print the AST, in a tree format
+        print("\n--- AST Structure ---")
+        print(ast.dump())
+        
+        
+    except Exception as e:
+        print(f"❌ Parse Error: {e}")
+        # Print a snippet of the file around the error if possible
+        # (Lark usually handles this, but we can add custom debug here if needed)
+
+if __name__ == "__main__":
+    filename = sys.argv[1] if len(sys.argv) > 1 else 'example.sl'
+    print(f"Testing parsing for file: {filename}")
+    test_file_parsing(filename)
