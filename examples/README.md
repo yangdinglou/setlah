@@ -69,6 +69,16 @@ The supplied board is already solved and uses a move bound of zero.
 The script prints `SAT` or `UNSAT` for each expected result and exits nonzero if
 a command fails or produces the wrong status.
 
+The same Choice, N-Queens, Graeco-Latin square, Clique, Sudoku, Einstein, and
+15-puzzle cases can be run through the Lean binding:
+
+```bash
+lake exe setlahExamples
+```
+
+This command also checks an intentional UNSAT instance. Choice and N-Queens are
+defined using both SetLaH quotation and Lean combinators in `LeanExamples.lean`.
+
 Input files are ordinary Clingo programs. To add an instance, provide all
 `ExtDOM`, `ExtPred`, and constant inputs expected by its `.sl` model. New
 executable models should also be added to `check.sh`.

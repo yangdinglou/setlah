@@ -1,16 +1,27 @@
-import argparse
-import time
+from __future__ import annotations
 
-import contextlib
-import io
+import argparse
+import sys
+from pathlib import Path
 
 from setlah import __version__
-from setlah.parsing.parser import Parser
-from setlah.rewrite.rw import Rewriter
-from setlah.transpile import transpile_program_to_asp, transpile_program_to_clingo, run_clingo_ast
+from setlah.engine import CompileOptions, EngineError, SolveOptions, compile_source, solve_source
+from setlah.protocol import protocol_main
+
+
+def _read(path: str) -> str:
+    return Path(path).read_text(encoding="utf-8")
+
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="SetLaH -> (egg) -> Clingo transpiler (FO only)")
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "protocol":
+        if len(argv) != 1:
+            print("usage: setlah protocol", file=sys.stderr)
+            return 2
+        return protocol_main()
+
+    ap = argparse.ArgumentParser(description="SetLaH to Clingo transpiler and solver")
     ap.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     ap.add_argument("input", help="Input .sl file")
     ap.add_argument(
@@ -21,9 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--verbose", action="store_true", help="Verbose rewriting logs")
     ap.add_argument(
-        "--cost-conversion",
-        action="store_true",
-        help="Run cost conversion saturation before extraction (enables aggregate lowering rewrites)",
+        "--cost-conversion", action="store_true", help="Run cost conversion saturation before extraction"
     )
     ap.add_argument(
         "--entailment-elim",
@@ -33,84 +42,48 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--print-asp", action="store_true", help="Print transpiled ASP and exit")
     ap.add_argument(
-        "--grounding",
-        action="store_true",
-        help="Apply all safe post-processing ground/aggregate rewrites (otherwise only when mergeable)",
+        "--grounding", action="store_true", help="Apply all safe post-processing ground/aggregate rewrites"
     )
-    ap.add_argument("--clingo-arg", action="append", default=[], help="Extra argument passed to clingo (repeatable)")
+    ap.add_argument(
+        "--clingo-arg", action="append", default=[], help="Extra argument passed to clingo (repeatable)"
+    )
     args = ap.parse_args(argv)
 
-    with open(args.input, "r", encoding="utf-8") as f:
-        text = f.read()
-
-    # Phase: Parsing
-    if args.verbose:
-        print("=" * 60)
-        print("PARSING")
-        print("=" * 60)
-        t0 = time.perf_counter()
-    program = Parser().parse(text)
-    if args.verbose:
-        print(f"Parsing time: {time.perf_counter() - t0:.3f}s")
-        print()
-
-    # Phase: Rewriting
-    if args.verbose:
-        print("=" * 60)
-        print("REWRITING")
-        print("=" * 60)
-        t0 = time.perf_counter()
-    rw = Rewriter(
-        verbose=args.verbose,
+    source = _read(args.input)
+    facts = [_read(path) for path in args.facts]
+    compile_options = CompileOptions(
+        grounding=args.grounding,
+        cost_conversion=args.cost_conversion,
         entailment_elim=args.entailment_elim,
-        enable_cost_conversion=args.cost_conversion,
+        verbose=args.verbose,
     )
-    if args.verbose:
-        rewritten = rw.rewrite_program(program, convert_only=False)
-        print(f"Total rewriting time: {time.perf_counter() - t0:.3f}s")
-        print()
-    else:
-        # egglog can be noisy on stdout; keep CLI output clean unless --verbose.
-        with contextlib.redirect_stdout(io.StringIO()):
-            rewritten = rw.rewrite_program(program, convert_only=False)
+    try:
+        if args.print_asp:
+            result = compile_source(source, facts, compile_options)
+            if args.verbose:
+                for diagnostic in result.diagnostics:
+                    print(diagnostic, file=sys.stderr)
+            print(result.asp, end="")
+            return 0
 
-    # Phase: Transpiling (post-processing)
-    if args.verbose:
-        print("=" * 60)
-        print("TRANSPILING")
-        print("=" * 60)
-        t0 = time.perf_counter()
-    if args.print_asp:
-        asp_output = transpile_program_to_asp(rewritten, grounding=args.grounding)
+        result = solve_source(
+            source,
+            facts,
+            SolveOptions(
+                compile=compile_options,
+                max_models=1,
+                clingo_arguments=tuple(args.clingo_arg),
+            ),
+        )
         if args.verbose:
-            print(f"Transpiling time: {time.perf_counter() - t0:.3f}s")
-            print()
-            print("=" * 60)
-            print("OUTPUT")
-            print("=" * 60)
-        print(asp_output)
-        if args.facts:
-            print()
-            for path in args.facts:
-                with open(path, "r", encoding="utf-8") as f:
-                    print(f.read())
-        return 0
-
-    tr = transpile_program_to_clingo(rewritten, grounding=args.grounding)
-    if args.verbose:
-        print(f"Transpiling time: {time.perf_counter() - t0:.3f}s")
-        print()
-
-    def on_model(m):
-        print(m)
-
-    res = run_clingo_ast(
-        tr.ast,
-        extra_files=list(args.facts),
-        arguments=list(args.clingo_arg),
-        on_model=on_model,
-    )
-    return 0 if res.satisfiable else 10
+            for diagnostic in result.diagnostics:
+                print(diagnostic, file=sys.stderr)
+        for model in result.models:
+            print(" ".join(symbol.render() for symbol in model.symbols))
+        return 0 if result.satisfiable else 10
+    except EngineError as exc:
+        print(f"{exc.category.value} error: {exc.message}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
