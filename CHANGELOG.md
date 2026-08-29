@@ -16,3 +16,6 @@ Initial public prerelease of the SetLaH compiler and command-line interface.
 - Add runnable fact instances and an end-to-end check for every Maple-set model.
 - Add public in-memory Python compilation and solving APIs.
 - Add the versioned JSON protocol used by external language bindings.
+- Add an ergonomic in-process Python API with validated programs, immutable
+  instances, typed facts, and structured model inspection.
+- Mark the Python package as typed and add a runnable embedding example.

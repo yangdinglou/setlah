@@ -123,6 +123,14 @@ class Model:
             "optimalityProven": self.optimality_proven,
         }
 
+    def atoms_named(self, name: str) -> tuple[Symbol, ...]:
+        """Return top-level atoms whose predicate name matches ``name``."""
+        return tuple(
+            symbol
+            for symbol in self.symbols
+            if symbol.kind is SymbolKind.FUNCTION and symbol.name == name
+        )
+
 
 class SolveStatus(str, Enum):
     SATISFIABLE = "satisfiable"

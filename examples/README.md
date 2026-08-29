@@ -66,6 +66,17 @@ The supplied board is already solved and uses a move bound of zero.
 ./examples/check.sh
 ```
 
+## Python Embedding
+
+Run the same basic Choice workflow through the in-process Python API:
+
+```bash
+python examples/python_choice.py
+```
+
+The example constructs typed facts, solves one model, and reads `selected/1`
+atoms from the structured result. See `docs/python.md` for the complete guide.
+
 The script prints `SAT` or `UNSAT` for each expected result and exits nonzero if
 a command fails or produces the wrong status.
 
