@@ -10,7 +10,7 @@ include lakefile.lean
 include lake-manifest.json
 include lean-toolchain
 recursive-include docs *.md
-recursive-include examples *.lp *.sl *.sh *.md
+recursive-include examples *.lp *.sl *.sh *.md *.py
 recursive-include SetLah *.lean
 recursive-include tests/lean *
 recursive-include tests/inputs *.sl

@@ -51,6 +51,7 @@ src/setlah/
 |-- parsing/      grammar, parser, transformer, and semantic checker
 |-- rewrite/      egglog schema, rewrite rules, and AST conversion
 |-- transpile/    ASP IR, lowering, safety, rendering, and Clingo execution
+|-- api.py        ergonomic Python Program, Instance, and typed fact API
 |-- engine.py     in-memory compile and solve operations
 `-- protocol.py   versioned JSON binding interface
 ```
@@ -62,6 +63,7 @@ Important entry points are:
 
 - `src/setlah/cli.py` for the command-line interface.
 - `src/setlah/engine.py` for the public in-memory API.
+- `src/setlah/api.py` for the pip-facing Python embedding workflow.
 - `src/setlah/protocol.py` for the external binding protocol.
 - `SetLah/Backend.lean` for the Lean protocol client and public result types.
 - `src/setlah/rewrite/rw.py` for e-graph orchestration.

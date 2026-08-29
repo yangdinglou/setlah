@@ -19,3 +19,6 @@ Initial public prerelease of the SetLaH compiler and command-line interface.
 - Add a Lean 4.32 library with checked quotations, program combinators, typed
   facts, structured models, and actionable backend errors.
 - Add a Lean installation doctor and end-to-end SAT/UNSAT examples.
+- Add an ergonomic in-process Python API with validated programs, immutable
+  instances, typed facts, and structured model inspection.
+- Mark the Python package as typed and add a runnable embedding example.

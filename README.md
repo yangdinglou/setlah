@@ -76,6 +76,41 @@ under `examples/instances/`. Check all included examples with:
 ./examples/check.sh
 ```
 
+## Python API
+
+The pip package can compile and solve SetLaH models entirely in memory. This is
+the recommended interface for embedding SetLaH in a Python application:
+
+```python
+from setlah import Program, SolveStatus
+
+program = Program(r"""
+ExtDOM Item: INT.
+ExtPred available: (Item).
+[
+  selected(X)? :- available(X).
+  (\exists X. selected(X)).
+]
+""")
+
+instance = (
+    program.instance()
+    .add_raw_facts("dom_Item(1..3).")
+    .add_fact("available", 1)
+    .add_fact("available", 2)
+    .add_fact("available", 3)
+)
+result = instance.solve()
+
+if result.status is SolveStatus.SATISFIABLE:
+    for atom in result.models[0].atoms_named("selected"):
+        print(atom.render())
+```
+
+Run the complete example with `python examples/python_choice.py`. See the
+[Python guide](docs/python.md) for typed facts, compilation options, model
+inspection, errors, and loading models from files.
+
 ## Lean 4
 
 The Lean library provides checked SetLaH quotations, program-building
@@ -121,6 +156,7 @@ options, model inspection, and error handling.
   aggregates.
 - [CLI reference](docs/cli.md): compilation, solving, fact files, and options.
 - [Examples](examples/README.md): runnable models, commands, and input schemas.
+- [Python guide](docs/python.md): embedding SetLaH as an in-process library.
 - [Lean 4 guide](docs/lean.md): embedding, compilation, solving, and models.
 - [JSON protocol](docs/protocol.md): versioned interface for language bindings.
 - [Architecture](docs/architecture.md): compiler pipeline and source layout.
@@ -136,7 +172,7 @@ pytest
 
 ## Known Limitations
 
-- The Python API is provisional and may change before version 1.0.
+- The Python and Lean APIs are provisional and may change before version 1.0.
 - Lean integration requires Lean 4.32.0 and an installed `setlah` executable.
 - The Lean client starts one isolated engine process per request. Streaming,
   cancellation, and incremental grounding are not yet supported.

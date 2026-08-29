@@ -23,6 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Compilers",
+    "Typing :: Typed",
 ]
 
 [project.optional-dependencies]
@@ -44,6 +45,7 @@ where = ["src"]
 include = ["setlah*"]
 
 [tool.setuptools.package-data]
+"setlah" = ["py.typed"]
 "setlah.parsing" = ["grammar.lark"]
 
 [tool.pytest.ini_options]
