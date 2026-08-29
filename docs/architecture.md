@@ -26,6 +26,23 @@ transpiler then renders ASP and applies safety and simplification passes.
 files. The command-line interface and JSON protocol both call these operations,
 so all clients use the same compiler semantics.
 
+## Language Bindings
+
+```text
+Lean application
+    | SetLaH source + in-memory facts, protocol v1 JSON
+    v
+setlah protocol (one subprocess per request)
+    | Python compiler and Clingo
+    v
+structured compile result or structured solver models
+```
+
+The Lean package renders its checked AST back to SetLaH source and invokes the
+engine discovered through `PATH` or `SETLAH_EXE`. It does not contain a second
+ASP backend. This keeps Python authoritative for compilation semantics and
+makes each request isolated and safe to run concurrently.
+
 ## Source Layout
 
 ```text
@@ -38,11 +55,15 @@ src/setlah/
 `-- protocol.py   versioned JSON binding interface
 ```
 
+The `SetLah/` directory contains the Lean AST, parser, checker, source renderer,
+DSL, quotation elaborator, and protocol client.
+
 Important entry points are:
 
 - `src/setlah/cli.py` for the command-line interface.
 - `src/setlah/engine.py` for the public in-memory API.
 - `src/setlah/protocol.py` for the external binding protocol.
+- `SetLah/Backend.lean` for the Lean protocol client and public result types.
 - `src/setlah/rewrite/rw.py` for e-graph orchestration.
 - `src/setlah/transpile/api.py` for public transpilation and execution helpers.
 - `src/setlah/transpile/pipeline.py` for ASP post-processing phases.

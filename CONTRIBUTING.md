@@ -14,5 +14,15 @@ Executable examples should include a `.sl` model, matching input facts, and an
 entry in `examples/check.sh`. Experimental compiler examples must at least
 compile with `setlah <example> --print-asp`.
 
-Protocol changes require focused producer tests and must keep stdout
-machine-only. Preserve backward compatibility within a protocol version.
+Changes to the Lean client or JSON protocol must also pass:
+
+```bash
+lake build SetLah setlahDoctor setlahExamples setlahTests
+lake exe setlahDoctor
+lake exe setlahTests
+lake exe setlahExamples
+```
+
+Protocol changes require tests on both the Python producer and Lean consumer.
+Keep protocol stdout machine-only and preserve backward compatibility within a
+protocol version.
