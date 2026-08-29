@@ -62,3 +62,10 @@ edge(2,3).
 Fact files can use any valid Clingo syntax. They may be replaced with another
 instance as long as it provides the domains, predicates, and constants declared
 by the model.
+
+## Binding Protocol
+
+`setlah protocol` is a machine interface: it reads one JSON request from stdin
+and writes one JSON response to stdout. Applications should use a binding such
+as the Lean library instead of invoking it manually. The wire format is
+documented in [protocol.md](protocol.md).

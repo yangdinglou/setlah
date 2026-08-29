@@ -228,8 +228,11 @@ class SemanticChecker:
                     )
                     head_arg_types.append("UNKNOWN")
             elif isinstance(arg, nodes.Constant):
-                # Constants have their own type
-                head_arg_types.append("CONST")
+                # A literal may inhabit any compatible declared domain. The
+                # concrete primitive type is not enough to choose between
+                # multiple INT- or Symbol-backed domains, so preserve an
+                # existing signature instead of manufacturing a conflict.
+                head_arg_types.append("UNKNOWN")
                 head_arg_names.append(str(arg.value))
             elif isinstance(arg, nodes.Identifier):
                 # Could be a constant identifier
@@ -413,12 +416,22 @@ class SemanticChecker:
             if isinstance(arg, nodes.Variable):
                 if arg.name in var_types:
                     # Check consistency
-                    if var_types[arg.name] != expected_type:
+                    if not self._types_compatible(var_types[arg.name], expected_type):
                         self.errors.append(
                             f"Block {self.current_block_idx}: Type conflict for variable '{arg.name}': inferred {var_types[arg.name]}, but '{pred_name}' arg {i} expects {expected_type}"
                         )
                 else:
                     var_types[arg.name] = expected_type
+
+    def _types_compatible(self, left: str, right: str) -> bool:
+        """Return whether two nominal domains share a usable representation."""
+        if left == right or left == "UNKNOWN" or right == "UNKNOWN":
+            return True
+        left_domain = self.domains.get(left)
+        right_domain = self.domains.get(right)
+        if left_domain is None or right_domain is None:
+            return False
+        return self._type_to_string(left_domain.type_def) == self._type_to_string(right_domain.type_def)
     
     def _process_constraint(self, constraint: nodes.SetConstraint):
         """
@@ -526,4 +539,3 @@ def check_program(program: nodes.Program) -> bool:
     """Convenience function to check a program."""
     checker = SemanticChecker()
     return checker.check_program(program) 
-

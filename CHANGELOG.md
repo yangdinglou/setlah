@@ -14,3 +14,5 @@ Initial public prerelease of the SetLaH compiler and command-line interface.
 - Constrain runtime dependencies to the tested egglog and Clingo versions.
 - Declare cloudpickle explicitly because egglog 12 imports it at runtime.
 - Add runnable fact instances and an end-to-end check for every Maple-set model.
+- Add public in-memory Python compilation and solving APIs.
+- Add the versioned JSON protocol used by external language bindings.

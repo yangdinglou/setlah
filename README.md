@@ -82,6 +82,7 @@ under `examples/instances/`. Check all included examples with:
   aggregates.
 - [CLI reference](docs/cli.md): compilation, solving, fact files, and options.
 - [Examples](examples/README.md): runnable models, commands, and input schemas.
+- [JSON protocol](docs/protocol.md): versioned interface for language bindings.
 - [Architecture](docs/architecture.md): compiler pipeline and source layout.
 - [Contributing](CONTRIBUTING.md): development setup and contribution checks.
 

@@ -22,6 +22,10 @@ Equality-saturation rewrites lower first-order and set constructs, introduce
 auxiliary predicates, and split conjunctions into integrity constraints. The
 transpiler then renders ASP and applies safety and simplification passes.
 
+`compile_source` and `solve_source` expose this pipeline without intermediate
+files. The command-line interface and JSON protocol both call these operations,
+so all clients use the same compiler semantics.
+
 ## Source Layout
 
 ```text
@@ -29,12 +33,16 @@ src/setlah/
 |-- ast/          AST dataclasses
 |-- parsing/      grammar, parser, transformer, and semantic checker
 |-- rewrite/      egglog schema, rewrite rules, and AST conversion
-`-- transpile/    ASP IR, lowering, safety, rendering, and Clingo execution
+|-- transpile/    ASP IR, lowering, safety, rendering, and Clingo execution
+|-- engine.py     in-memory compile and solve operations
+`-- protocol.py   versioned JSON binding interface
 ```
 
 Important entry points are:
 
 - `src/setlah/cli.py` for the command-line interface.
+- `src/setlah/engine.py` for the public in-memory API.
+- `src/setlah/protocol.py` for the external binding protocol.
 - `src/setlah/rewrite/rw.py` for e-graph orchestration.
 - `src/setlah/transpile/api.py` for public transpilation and execution helpers.
 - `src/setlah/transpile/pipeline.py` for ASP post-processing phases.

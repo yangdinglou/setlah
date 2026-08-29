@@ -168,8 +168,8 @@ class Rewriter:
                 print(f"Rewrite failed: {e}")
                 import traceback
                 traceback.print_exc()
-            return block
-    
+            raise
+
     # MARK: AND-split — core splitting method
     def _split_constraints(self, constraints: list[Constraint]) -> list[Constraint]:
         """Split top-level conjunctions using split_set + custom cost model.
@@ -1096,5 +1096,4 @@ class Rewriter:
             except Exception:
                 continue
         return out
-        
-    
+
