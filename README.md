@@ -4,6 +4,9 @@ SetLaH is a constraint-modelling language that compiles first-order logic,
 choice rules, and set constraints to
 [Clingo](https://potassco.org/clingo/) Answer Set Programs.
 
+The language and its design are presented in the OOPSLA 2026 paper
+[Semi-Declarative Language for Combinatorial Search](https://yangdinglou.com/files/setlah-oopsla26.pdf).
+
 This repository is a prerelease. The language and Python API may change before
 version 1.0; command-line changes are recorded in [CHANGELOG.md](CHANGELOG.md).
 
