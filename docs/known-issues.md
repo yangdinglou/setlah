@@ -93,8 +93,9 @@ distinct queries of `client_server_db_ae` and comparing each answer with Z3
 | compiler failures | 112 (96 raw, 16 crashes) | **0** |
 
 Mean compile time 5.0 s (max 8.2 s), mean solve time 2 ms. The same
-measurement over mypyvy's 792 `updr` queries, where 623 failed before, is
-running.
+measurement over mypyvy's 792 `updr` queries: 169 answers and 623 failures
+before, **792 answers and no failures** after, each agreeing with Z3 (mean
+compile 6.5 s, max 41.9 s). That corpus needed B3 as well.
 
 ---
 
@@ -166,7 +167,9 @@ predicate's rules instead of letting the last rule win, so a cube that
 types an argument `UNKNOWN` no longer erases what another rule knows.
 
 **Impact.** On mypyvy's 792 `updr` queries this was the next blocker after
-B1: 41 of the first 62 queries produced a program Clingo refused to ground.
+B1: with B1 fixed alone, 41 of the first 62 queries produced a program
+Clingo refused to ground; with both fixed, all 792 compile, ground and
+agree with Z3.
 
 ---
 
