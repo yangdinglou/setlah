@@ -28,9 +28,20 @@ _aux_counter = 0
 def _preprocess_aux_calls(block_expr_str: str) -> tuple[str, list[str]]:
     """Pre-process AuxCall patterns in the block expression.
 
-    GeneralLit.AuxCall(body_lits, qvars, free_vars) patterns are:
-    1. Extracted and converted to aux predicate rules
-    2. Replaced with Literal(Atom.Pred("__aux_N", free_vars_list), True)
+    Two spellings occur, and both are lowered to auxiliary rules here:
+
+    * ``GeneralLit.AuxCall(body_lits, qvars, free_vars)`` -- one rule.
+    * ``Literal.AuxCall(body_cubes, qvars)`` -- the form the rewrite schema
+      emits (``rewrite/egg_schema.py``); ``body_cubes`` is a ``Vec[Formula]``
+      of DNF cubes and one rule is generated per cube, with the free variables
+      computed as (variables in the cubes) minus the quantified ones.
+
+    The call is replaced by ``Literal(Atom.Pred("__aux_N", free_vars), True)``.
+    Handling the second spelling here is a fallback: the rewriter normally
+    lowers those calls itself, and only leaves one in place when its recursive
+    pass gives up (for example at maximum recursion depth). Without this the
+    call reaches the renderer, which raises ``Expected Literal(atom, sign)``.
+    See ``docs/known-issues.md`` (B1).
 
     Returns:
         (modified_expr_str, list_of_aux_rules)
@@ -40,9 +51,8 @@ def _preprocess_aux_calls(block_expr_str: str) -> tuple[str, list[str]]:
     aux_rules: list[str] = []
     result = block_expr_str
 
-    # Find all Literal.AuxCall(...) patterns
-    # Pattern: Literal.AuxCall(body_lits_set, qvars_set, free_vars_set)
-    auxcall_pattern = r'GeneralLit\.AuxCall\('
+    # Either spelling; the prefix decides how the arguments are read.
+    auxcall_pattern = r'(GeneralLit|Literal)\.AuxCall\('
 
     while True:
         match = re.search(auxcall_pattern, result)
@@ -50,39 +60,127 @@ def _preprocess_aux_calls(block_expr_str: str) -> tuple[str, list[str]]:
             break
 
         start = match.start()
+        prefix = match.group(1)
         # Extract the full AuxCall(...) expression
-        call_str = _extract_balanced_call(result, start + len("GeneralLit."))
-        call_full = "GeneralLit." + call_str
+        call_str = _extract_balanced_call(result, start + len(prefix) + 1)
+        call_full = prefix + "." + call_str
 
         # Parse the AuxCall arguments
         try:
-            aux_info = _parse_aux_call(call_full)
-            if aux_info is None:
+            if prefix == "GeneralLit":
+                aux_info = _parse_aux_call(call_full)
+                cubes = None if aux_info is None else [aux_info[0]]
+                free_vars = None if aux_info is None else aux_info[2]
+            else:
+                parsed = _parse_literal_aux_call(call_full)
+                cubes, free_vars = (None, None) if parsed is None else parsed
+            if cubes is None:
                 # Can't parse, skip this match
                 break
-
-            body_lits, qvars, free_vars = aux_info
 
             # Generate aux predicate name
             aux_name = f"__aux_{_aux_counter}"
             _aux_counter += 1
 
-            # Generate aux rule: aux_name(free_vars) :- body_lits
-            aux_rule = _generate_aux_rule(aux_name, body_lits, free_vars)
-            aux_rules.append(aux_rule)
+            # Generate one aux rule per cube: aux_name(free_vars) :- cube
+            for cube in cubes:
+                aux_rules.append(_generate_aux_rule(aux_name, cube, free_vars))
 
-            # Generate replacement: Formula.Lit(GeneralLit.from_literal(GeneralLit.AuxCall(Atom.Pred("aux_name", free_vars_list), True)))
+            # Generate replacement: Literal(Atom.Pred("aux_name", free_vars_list), True)
             replacement = _generate_aux_call_replacement(aux_name, free_vars)
 
             # Replace in result
             end = start + len(call_full)
             result = result[:start] + replacement + result[end:]
 
-        except Exception as e:
+        except Exception:
             # If parsing fails, skip this AuxCall (leave as is for error reporting later)
             break
 
     return result, aux_rules
+
+
+def _parse_literal_aux_call(call_str: str) -> tuple[list[list[str]], list[str]] | None:
+    """Parse ``Literal.AuxCall(body_cubes, qvars)``.
+
+    Returns ``(cubes_as_asp, free_vars)``, where each cube is a list of ASP body
+    literals, or None if the call cannot be read.
+    """
+    try:
+        expr = pyast.parse(call_str, mode="eval").body
+    except SyntaxError:
+        return None
+
+    if not isinstance(expr, pyast.Call) or not _is_attr(expr.func, "Literal", "AuxCall"):
+        return None
+    if len(expr.args) != 2:
+        return None
+
+    cubes_node, qvars_node = expr.args
+    cubes: list[list[str]] = []
+    all_vars: list[str] = []
+    for cube_node in _parse_vec_elements(cubes_node):
+        lit_nodes = _parse_conjunction_of_literals(cube_node)
+        if lit_nodes is None:
+            return None
+        cubes.append([_literal_to_body_lit(lit) for lit in lit_nodes])
+        all_vars.extend(_vars_in_nodes(lit_nodes))
+
+    qvars = {v for v in (_extract_var_name(n) for n in _parse_set_call(qvars_node)) if v}
+    free_vars: list[str] = []
+    for v in all_vars:
+        if v not in qvars and v not in free_vars:
+            free_vars.append(v)
+    return cubes, free_vars
+
+
+def _parse_vec_elements(node: pyast.AST) -> list:
+    """Elements of ``Vec[T](...)`` or ``Vec[T].empty()``."""
+    if isinstance(node, pyast.Call):
+        if isinstance(node.func, pyast.Attribute) and node.func.attr == "empty":
+            return []
+        return list(node.args)
+    return []
+
+
+def _parse_conjunction_of_literals(node: pyast.AST) -> list | None:
+    """Literal nodes of one DNF cube, in any of the forms the extractor picks."""
+    if not isinstance(node, pyast.Call) or not isinstance(node.func, pyast.Attribute):
+        return None
+    cls_name = node.func.value.id if isinstance(node.func.value, pyast.Name) else None
+    method = node.func.attr
+    if cls_name != "Formula":
+        return None
+
+    if method == "grouped_and_lit" and len(node.args) == 1:
+        return _parse_set_call(node.args[0])
+
+    if method == "And" and len(node.args) == 2:
+        left = _parse_conjunction_of_literals(node.args[0])
+        right = _parse_conjunction_of_literals(node.args[1])
+        if left is None or right is None:
+            return None
+        return left + right
+
+    if method == "Lit" and len(node.args) == 1:
+        inner = node.args[0]
+        if isinstance(inner, pyast.Call) and _is_attr(inner.func, "GeneralLit", "from_literal"):
+            if len(inner.args) == 1:
+                return [inner.args[0]]
+        return None
+
+    return None
+
+
+def _vars_in_nodes(nodes: list) -> list[str]:
+    """Variable names appearing in the given AST nodes, in order of appearance."""
+    out: list[str] = []
+    for node in nodes:
+        for sub in pyast.walk(node):
+            name = _extract_var_name(sub)
+            if name and name not in out:
+                out.append(name)
+    return out
 
 
 def _parse_aux_call(call_str: str) -> tuple[list[str], list[str], list[str]] | None:
@@ -239,6 +337,17 @@ def _extract_aux_pred_types(lines: list[str], pred_arg_types: Any) -> dict[str, 
             tname = var_types.get(head_arg, "UNKNOWN")
             aux_arg_types.append(tname)
 
+        # An auxiliary predicate defined by several rules (one per disjunct) is typed
+        # by merging them: a rule whose body does not mention one of the arguments
+        # types it UNKNOWN, while a sibling rule that does mention it knows the type.
+        # Keep the known one, so a head variable unbound in this rule can still be
+        # guarded (docs/known-issues.md, B3).
+        previous = aux_types.get(aux_name)
+        if previous and len(previous) == len(aux_arg_types):
+            aux_arg_types = [
+                old if new in ("UNKNOWN", "CONST") and old not in ("UNKNOWN", "CONST") else new
+                for old, new in zip(previous, aux_arg_types)
+            ]
         aux_types[aux_name] = aux_arg_types
 
     return aux_types

@@ -478,27 +478,8 @@ class Rewriter:
             cons_start = nil_start
         
         # Parse bindings before cons_constraint
-        bindings: dict[str, str] = {}
-        
-        # Check for tuple format: (bindings, cons_constraint(...), cost)
-        if s.startswith("("):
-            prefix = s[1:cons_start].strip()
-            if prefix:
-                parts = self._split_top_level(prefix, ',')
-                for part in parts:
-                    part = part.strip()
-                    if '=' in part and not part.startswith('='):
-                        eq_pos = part.find('=')
-                        name = part[:eq_pos].strip()
-                        value = part[eq_pos+1:].strip()
-                        if name.startswith('_') and name[1:].replace('_', '').isalnum():
-                            bindings[name] = value
-        
-        # Also check for line-based format (handles multi-line bindings)
-        if cons_start > 0 and not bindings:
-            prefix = s[:cons_start]
-            bindings = self._parse_multiline_bindings(prefix)
-        
+        bindings = self._parse_binding_prefix(s[:cons_start])
+
         # Resolve bindings among themselves (iterate to fixed point)
         # Sort by name length descending so longer names (e.g. _Formula_10) are
         # resolved before shorter prefixes (e.g. _Formula_1) to avoid substring aliasing.
@@ -539,44 +520,77 @@ class Rewriter:
         
         return result
     
-    def _parse_multiline_bindings(self, prefix: str) -> dict[str, str]:
-        """Parse bindings from prefix text, handling multi-line values.
-        
-        Handles formats like:
-            _Set_1 = Set[Term](...)
-            _GeneralLit_3 = GeneralLit.from_literal(
-                Literal(
-                    ...
-                )
-            )
+    def _parse_binding_prefix(self, prefix: str) -> dict[str, str]:
+        """Parse the let-style bindings egglog prints before the body.
+
+        egglog emits them either comma-separated on one line
+
+            (_VarList_1 = cons_var(...), _Set_1 = Set[Term](...), cons_constraint(...), 12)
+
+        or one per line, with the first following the tuple's "(" and later
+        ones possibly indented
+
+            (_Formula_1 = Formula.Lit(
+                 Literal(...)
+             )
+             _VarList_1 = cons_var(...)
+
+        A binding starts where a name appears at parenthesis depth 0 followed
+        by "="; its value runs to the next such start.  Scanning by depth
+        handles both layouts and never mistakes a *use* of a name inside a
+        value for a new binding.  Splitting on commas (no commas in the
+        multi-line form) or anchoring names to the start of a line (missing
+        the first binding after "(" and every indented one) made one binding's
+        value swallow the text of the next, and substituting that value
+        spliced a binding definition into the middle of the expression --
+        which then no longer parsed, so auxiliary calls were left unlowered
+        and the transpiler crashed on them (docs/known-issues.md, B1).
         """
+        s = prefix.strip()
+        if s.startswith("("):
+            s = s[1:]
+
+        starts: list[tuple[str, int, int]] = []  # (name, value start, binding start)
+        depth = 0
+        i = 0
+        n = len(s)
+        while i < n:
+            c = s[i]
+            if c in "([{":
+                depth += 1
+                i += 1
+                continue
+            if c in ")]}":
+                depth -= 1
+                i += 1
+                continue
+            if depth == 0 and c == "_":
+                m = re.match(r"_[A-Za-z0-9_]*", s[i:])
+                if m:
+                    j = i + m.end()
+                    while j < n and s[j] in " \t\r\n":
+                        j += 1
+                    # "=" but not "==": a binding, not a comparison
+                    if j < n and s[j] == "=" and (j + 1 >= n or s[j + 1] != "="):
+                        j += 1
+                        while j < n and s[j] in " \t\r\n":
+                            j += 1
+                        starts.append((m.group(0), j, i))
+                        i = j
+                        continue
+            i += 1
+
         bindings: dict[str, str] = {}
-        
-        # Regex to find binding starts: _Name = 
-        import re
-        binding_pattern = re.compile(r'^(_[A-Za-z0-9_]+)\s*=\s*', re.MULTILINE)
-        
-        matches = list(binding_pattern.finditer(prefix))
-        for i, match in enumerate(matches):
-            name = match.group(1)
-            value_start = match.end()
-            
-            # Find the end of this binding's value
-            # Either at the start of the next binding or at end of prefix
-            if i + 1 < len(matches):
-                value_end = matches[i + 1].start()
-            else:
-                value_end = len(prefix)
-            
-            value = prefix[value_start:value_end].strip()
-            
-            # Remove trailing newlines/whitespace
-            value = value.rstrip()
-            
+        for k, (name, value_start, _) in enumerate(starts):
+            value_end = starts[k + 1][2] if k + 1 < len(starts) else len(s)
+            value = s[value_start:value_end].strip().rstrip(",").strip()
             if name and value:
                 bindings[name] = value
-        
         return bindings
+
+    def _parse_multiline_bindings(self, prefix: str) -> dict[str, str]:
+        """Deprecated alias of :meth:`_parse_binding_prefix`."""
+        return self._parse_binding_prefix(prefix)
 
     def _replace_aux_calls(self, expr_str: str) -> tuple[str, list[str]]:
         """Replace Literal.AuxCall patterns with regular Literal predicates.
