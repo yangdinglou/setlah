@@ -22,7 +22,8 @@ All notable changes to SetLaH will be documented in this file.
   reaches it. On the DuoAI `client_server_db_ae` corpus (142 distinct
   invariant-checking queries) this takes automatic compilation from 30
   answers and 112 failures to 142 answers and no failures, each agreeing with
-  Z3. See `docs/known-issues.md` (B1).
+  Z3; on mypyvy's 792 `updr` queries, from 169 answers and 623 failures to
+  792 answers and none. See `docs/known-issues.md` (B1).
 - Guard head variables of generated auxiliary rules that the rule's own body
   does not bind, so Clingo accepts the program. An auxiliary predicate takes
   the free variables of the whole disjunction it replaces, so the rule for a
