@@ -23,15 +23,29 @@ from .entailment import _pos_pred_literal, _term_var_name
 # =============================================================================
 
 
-def _infer_safety_guards(body_lits: list[str], *, pred_arg_types: Any) -> list[str]:
+def _infer_safety_guards(
+    body_lits: list[str], *, pred_arg_types: Any, head_lits: list[str] | None = None
+) -> list[str]:
     """Infer `dom_<Type>(V)` guards for variables that don't appear in positive literals.
 
     A variable is unsafe if it appears in the constraint but never in a positive
     (non-negated, non-aggregate) predicate literal. Variables inside aggregates are
     local to the aggregate and don't make external occurrences safe.
+
+    `head_lits` carries the head of a rule. A head variable must be bound by the
+    body too, and one that is not is just as unsafe as an unbound body variable --
+    Clingo rejects the program either way. This matters for the auxiliary rules
+    generated from a disjunctive body: the auxiliary predicate's arguments are the
+    free variables of the whole disjunction, so a variable occurring in one
+    disjunct heads every rule, including the rules of the disjuncts that do not
+    mention it. Its domain is read from the auxiliary predicate's own inferred
+    signature, i.e. from the sibling rule where it is bound.
+    See `docs/known-issues.md` (B3).
     """
     if not isinstance(pred_arg_types, dict):
         return []
+
+    head_lits = head_lits or []
 
     # Collect all variables in the constraint (excluding counted vars in aggregates)
     all_vars: set[str] = set()
@@ -100,6 +114,21 @@ def _infer_safety_guards(body_lits: list[str], *, pred_arg_types: Any) -> list[s
 
         # Try to infer types from predicate signatures
         pred_info = _extract_pred_info_from_lit(lit)
+        if pred_info is not None:
+            pred_name, arg_vars = pred_info
+            types = pred_arg_types.get(pred_name)
+            if types and isinstance(types, (list, tuple)):
+                for pos, var in enumerate(arg_vars):
+                    if pos < len(types) and var and var not in ("_",):
+                        tname = types[pos]
+                        if isinstance(tname, str) and tname not in ("UNKNOWN", "CONST"):
+                            var_types.setdefault(var, tname)
+
+    # Head variables need binding by the body, and never provide it; take their
+    # types from the head predicate's signature.
+    for lit in head_lits:
+        all_vars.update(_extract_vars_from_lit(lit))
+        pred_info = _extract_pred_info_from_lit(lit.strip())
         if pred_info is not None:
             pred_name, arg_vars = pred_info
             types = pred_arg_types.get(pred_name)
