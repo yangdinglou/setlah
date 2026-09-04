@@ -78,7 +78,9 @@ def transpile_program_to_asp(program: Any, *, grounding: bool = False) -> str:
                 head = head.strip()
                 body_raw = body_raw.rstrip(".").strip()
                 body_lits = [lit.strip() for lit in _split_top_level_commas(body_raw) if lit.strip()]
-                guards = _infer_safety_guards(body_lits, pred_arg_types=merged_aux_types)
+                guards = _infer_safety_guards(
+                    body_lits, pred_arg_types=merged_aux_types, head_lits=[head]
+                )
                 if guards:
                     guarded_aux_rules.append(f"{head} :- {', '.join(guards + body_lits)}.")
                 else:

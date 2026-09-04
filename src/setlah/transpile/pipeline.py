@@ -239,7 +239,9 @@ def transpile_block_expr_to_asp(
             head = head.strip()
             body_raw = body_raw.rstrip(".").strip()
             body_lits = [lit.strip() for lit in _split_top_level_commas(body_raw) if lit.strip()]
-            safety_guards = _infer_safety_guards(body_lits, pred_arg_types=merged_pred_arg_types)
+            safety_guards = _infer_safety_guards(
+                body_lits, pred_arg_types=merged_pred_arg_types, head_lits=[head]
+            )
             if safety_guards:
                 all_lits = safety_guards + body_lits
                 final_lines.append(f"{head} :- {', '.join(all_lits)}.")
