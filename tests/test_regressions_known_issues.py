@@ -152,3 +152,14 @@ def test_b3_program_grounds_in_clingo():
     ctl.add("base", [], asp + "\n" + read_facts("unsafe_u1.lp"))
     ctl.ground([("base", [])])          # raises if the program has unsafe variables
     assert ctl.solve().satisfiable is not None
+
+
+# --------------------------------------------------------------------- B2 (open)
+
+@pytest.mark.xfail(strict=True, reason="known-issues B2: an ite-valued frame equality is emitted as a raw-constraint comment")
+def test_b2_ite_frame_equality_is_lowered():
+    """Ivy's frame axiom as written, post(V) = ite(V = K, new, pre(V)) under the witness
+    guards, must not fall back to the raw-constraint comment. Strict xfail: this test
+    starts failing the moment the lowering handles the shape, and then the mark is removed."""
+    asp = compile_model("raw_f0_ite_frame_equality.sl")
+    assert "raw-constraint" not in asp, asp
