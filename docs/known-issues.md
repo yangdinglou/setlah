@@ -10,7 +10,7 @@ Reproduce with `setlah tests/inputs/regressions/<file>.sl [facts.lp] --print-asp
 | id | symptom | exit | severity | status |
 |---|---|---|---|---|
 | [B1](#b1) | crash: `Expected Literal(atom, sign), got Literal.AuxCall(...)` | 1 | blocker | **fixed** |
-| [B2](#b2) | `:- % raw-constraint ...` in the output | 0 | wrong output | no longer triggered; fallback still unsafe |
+| [B2](#b2) | `:- % raw-constraint ...` in the output | 0 | wrong output | open |
 | [B3](#b3) | unsafe auxiliary rule; Clingo rejects the program | 0 | wrong output | **fixed** |
 | [B4](#b4) | a body atom loses its arguments | 0 | wrong output | open |
 | [B5](#b5) | large models cannot be compiled at all | 1 | limitation | open |
@@ -119,13 +119,18 @@ success either way.
 `forall-exists-forall` prefix. Both used to fall back under every
 `--entailment-elim`, `--grounding` and `--cost-conversion` setting.
 
-**Status.** Both now compile with no raw output, and no raw constraint is
-emitted anywhere in the 142-query DuoAI corpus: the fallback was reached
-because B1 corrupted the extracted expression, not because these formulas
-are beyond the lowering. The fallback path itself remains in the code
-(`transpile/egg_parsing.py` gives up, `transpile/constraint.py` prints the
-formula as a comment), and while it is unreachable on everything measured so
-far, it is still unsafe if reached.
+**Status.** The two reproducers now compile with no raw output, and none
+is emitted on the 142-query DuoAI corpus *as pre-normalised by the study's
+translator* (frame equalities split disjunction-free, positive existentials
+Skolemized into helper rules, universals distributed). Those rewrites were
+added to dodge B1; with them switched off (`--plain`), the same 142 queries
+as Ivy writes them give **12 compiled and 130 raw fallbacks** on the fixed
+compiler. So the fallback is reachable on ordinary input -- a transition
+system's frame axiom `post = ite(c, new, pre)` under its universal, and
+positive existentials under universals -- and the earlier reading that B1
+explained all of it was wrong. The fallback path (`transpile/egg_parsing.py`
+gives up, `transpile/constraint.py` prints the formula as a comment) is a
+real incompleteness of the lowering, and it exits 0.
 
 **Suggested fix.** Make the fallback a hard error, so incompleteness is
 visible; a caller can then decide. Emitting a comment where a constraint
