@@ -113,7 +113,10 @@ parsing failed`); if a statement follows, that statement is absorbed as the
 constraint's body, which silently changes its meaning. The compiler reports
 success either way.
 
-**Reproducers.** `raw_f1_frame_axiom.sl` — a transition-system frame axiom,
+**Reproducers.** `raw_f0_ite_frame_equality.sl` (17 lines) — the frame axiom
+exactly as Ivy writes it, `post(V) = ite(V = K, new, pre(V))` under the
+witness guards of the action's parameters; exit 0 and a raw-constraint
+comment on the fixed compiler. `raw_f1_frame_axiom.sl` — the same axiom,
 `forall V. (V = k -> post(V) <-> new) and (V != k -> post(V) <-> pre(V))`.
 `raw_f2_forall_exists_forall.sl` — an inferred invariant with a
 `forall-exists-forall` prefix. Both used to fall back under every
@@ -125,10 +128,12 @@ translator* (frame equalities split disjunction-free, positive existentials
 Skolemized into helper rules, universals distributed). Those rewrites were
 added to dodge B1; with them switched off (`--plain`), the same 142 queries
 as Ivy writes them give **12 compiled and 130 raw fallbacks** on the fixed
-compiler. So the fallback is reachable on ordinary input -- a transition
-system's frame axiom `post = ite(c, new, pre)` under its universal, and
-positive existentials under universals -- and the earlier reading that B1
-explained all of it was wrong. The fallback path (`transpile/egg_parsing.py`
+compiler. So the fallback is reachable on ordinary input: on the DuoAI sample
+bisected assertion by assertion it is one shape, the frame axiom
+`post = ite(c, new, pre)` under its universals (`raw_f0_*`, and
+`test_b2_ite_frame_equality_is_lowered`, a strict xfail that flips when the
+lowering handles it); on mypyvy's 792 queries the plain translation falls
+raw on 568. The earlier reading that B1 explained all of it was wrong. The fallback path (`transpile/egg_parsing.py`
 gives up, `transpile/constraint.py` prints the formula as a comment) is a
 real incompleteness of the lowering, and it exits 0.
 
