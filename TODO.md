@@ -15,7 +15,8 @@ verification queries, Alloy commands translated by PORTUS) with the
   lower as the comment `:- % raw-constraint ...` and exits 0 (B2); on `main`,
   `Rewriter.rewrite_block` returns the unrewritten block when a rewrite
   raises. B1 stayed hidden for a whole workload because each layer swallowed
-  the previous one's failure. A `--lenient` flag can keep the old behaviour
+  the previous one's failure. B2 is reachable on ordinary input: Ivy's
+  frame axioms as written fall raw on 130 of 142 DuoAI queries (2026-09-05). A `--lenient` flag can keep the old behaviour
   for anyone who wants it.
 - **B4, wrong code: a body atom loses its arguments.** Exit 0, silently
   vacuous constraint. Reproducer `tests/inputs/regressions/wrongcode_d1_*`;
