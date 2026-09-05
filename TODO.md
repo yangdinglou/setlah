@@ -22,9 +22,12 @@ verification queries, Alloy commands translated by PORTUS) with the
   not yet minimised below one 123-line statement. Highest-severity open item.
 - **B6, safety check too conservative.** A recursive atom is not taken as
   binding a head variable (`tc(X0, XM) :- base(X0, X1), tc(X1, XM).` is
-  rejected), and an equality to an expression over bound variables does not
-  bind its left side. Both are safe rules; callers work around them with a
-  domain guard.
+  rejected), an equality to an expression over bound variables does not
+  bind its left side, and the check is order-sensitive: `r(X) :- q(X).`
+  before `q(X) :- p(X).` is rejected, the reverse order accepted, with a
+  message ("not bound in body") that also stands in for "undefined
+  predicate". All are safe rules; callers work around them with a domain
+  guard or by reordering. A two-pass check fixes the order case.
 - **Unify the two auxiliary-predicate paths.** `rewrite/rw.py` and
   `transpile/aux.py` each carry their own `_parse_aux_call`,
   `_generate_aux_rule`, `_extract_balanced_call`, `_split_top_level`,
