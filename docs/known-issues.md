@@ -232,3 +232,15 @@ domain guard, but which reject rules that are safe:
 - **Equality-bound head variable.** `f(X, V) :- g(X, F), (= V (+ F 1)).` is
   rejected with `Variable 'V' in head ... is not bound in body`: an equality
   to an expression over bound variables is not taken as binding `V`.
+- **Definition order.** The check is order-sensitive: with `p` a choice,
+
+      r(X) :- q(X).
+      q(X) :- p(X).
+
+  is rejected with `Variable 'X' in head of rule for 'r' is not bound in
+  body`, while the same two rules in the other order compile. A predicate
+  binds a variable only in rules that come after its own definition, so
+  the message names the wrong cause (and the same message appears for a
+  predicate that is never defined at all). Found 2026-09-05 through sliced
+  compilation of a PORTUS command; a two-pass check, or an "undefined
+  predicate" diagnostic, would remove both problems.
