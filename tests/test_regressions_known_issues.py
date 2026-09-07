@@ -291,3 +291,45 @@ def test_b5_block_of_320_constraints_compiles():
     constraints = [l for l in asp.splitlines() if l.startswith(":- ")]
     assert len(constraints) == 320, len(constraints)
     assert any("bad319" in l for l in constraints)
+
+
+# ------------------------------------------------- B2: limits-harness shapes
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "raw_v08_flat_antecedent.sl",
+        "raw_v11_flat_antecedent.sl",
+        "raw_n07_nested_universals.sl",
+        "raw_f1_frame_axiom.sl",
+        "raw_f2_forall_exists_forall.sl",
+    ],
+)
+def test_b2_harness_shapes_are_lowered(model):
+    """The shapes the limits harness found falling back (docs/known-issues.md, B2):
+    a flat antecedent over 8 and 11 variables, nested universals of depth 7."""
+    asp = compile_model(model)
+    assert "raw-constraint" not in asp, asp
+    assert "AuxCall" not in asp, asp
+
+
+def test_b2_flat_antecedent_is_enforced():
+    """The lowered 8-variable constraint means what it says: with p on the end of the
+    only 7-step path the program is SAT with pick unconstrained, without it UNSAT."""
+    clingo = pytest.importorskip("clingo")
+    asp = compile_model("raw_v08_flat_antecedent.sl")
+    facts = read_facts("raw_v08.lp")
+
+    def count_models(program):
+        ctl = clingo.Control(["0", "--warn=none"])
+        ctl.add("base", [], program)
+        ctl.ground([("base", [])])
+        n = 0
+        def on_model(_):
+            nonlocal n
+            n += 1
+        ctl.solve(on_model=on_model)
+        return n
+
+    assert count_models(asp + "\n" + facts) == 256
+    assert count_models(asp + "\n" + facts.replace("p(6).", "")) == 0

@@ -29,6 +29,15 @@ def split_cost_model(egraph: EGraph, expr: Expr, children_costs: list[int]) -> i
     return 1 + sum(children_costs)
 
 class Rewriter:
+    # Schedule knobs for _rewrite_single_constraint (docs/known-issues.md, B2).
+    # Phase 1 runs the extraction rules in _EXTRACTION_CHUNKS runs of
+    # _EXTRACTION_CHUNK_ITERS iterations each, resetting the back-off
+    # scheduler between runs; Phase 2 repeats the aux round at most
+    # _AUX_ROUNDS times, stopping as soon as the term is lowered.
+    _EXTRACTION_CHUNKS = 4
+    _EXTRACTION_CHUNK_ITERS = 5
+    _AUX_ROUNDS = 4
+
     def __init__(self, verbose: bool = False, *, entailment_elim: str = "asp", enable_cost_conversion: bool = False):
         self.egraph = None
         self.checker = None
@@ -228,20 +237,26 @@ class Rewriter:
 
         return split_result
 
-    def _rewrite_single_constraint(self, constraint: Constraint, eq_rules, extraction_rules, max_depth: int = 5) -> list[Constraint]:
+    def _rewrite_single_constraint(self, constraint: Constraint, eq_rules, extraction_rules, max_depth: int = 64) -> list[Constraint]:
         """Rewrite a single constraint through egg, handling aux predicate introduction.
-        
+
         Input: single Constraint
         Output: list of Constraints (one constraint may become multiple)
-        
+
         Uses recursion for aux replacement: after replacing AuxCall patterns,
         recursively calls itself to fully rewrite the modified constraint.
-        
+        Each pass lowers one quantifier level to an auxiliary predicate, so
+        the recursion depth needed equals the nesting depth of the
+        constraint; a cap of 5 stopped nested universals at depth 7
+        (docs/known-issues.md, B2).
+
         Args:
             constraint: The constraint to rewrite
             eq_rules: Equality rules for normalization
             extraction_rules: Extraction rules for IC conversion
-            max_depth: Maximum recursion depth for aux replacement (default: 3)
+            max_depth: Safety stop on the recursion; every pass strictly
+                reduces the quantifier depth, so it is not reached by any
+                finite input in practice (default: 64)
         
         Internally wraps as cons_constraint(phi, nil_constraint()) for egg processing.
         """
@@ -259,12 +274,19 @@ class Rewriter:
         if self.verbose:
             print("Running base rewrite rules...")
             t0 = time.perf_counter()
-        base_rules = (
+        self.egraph.run(
             run(term_set).saturate()
             + run(eq_rules, scheduler=back_off()) * 15
-            + run(extraction_rules, scheduler=back_off()) * 20
         )
-        self.egraph.run(base_rules)
+        # The extraction rules build grouped forms one literal and one
+        # quantifier level per iteration. Under one back-off scheduler a rule
+        # banned early stays banned for a doubling number of iterations, so
+        # with 20 iterations in one run the chains did not finish for some
+        # literal counts (8 variables fell back, 9 lowered). Running the same
+        # 20 iterations as four runs of five resets the scheduler's bans
+        # between them (docs/known-issues.md, B2).
+        for _ in range(self._EXTRACTION_CHUNKS):
+            self.egraph.run(run(extraction_rules, scheduler=back_off()) * self._EXTRACTION_CHUNK_ITERS)
         if self.verbose:
             print(f"  Phase 1 (base rules): {time.perf_counter() - t0:.3f}s")
         
@@ -279,26 +301,31 @@ class Rewriter:
             if self.verbose:
                 print(f"  Phase 1.5 (cost conversion): {time.perf_counter() - t0:.3f}s")
         
-        # Phase 2: Auxiliary predicate introduction
+        # Phase 2: Auxiliary predicate introduction.
+        # The aux rule needs the grouped forms (grouped_exists over a
+        # grouped_dnf of literal cubes) that the extraction rules may only
+        # complete late, so one aux round was not always enough. Repeat the
+        # round until the extracted term is an integrity constraint or holds
+        # an AuxCall for the next pass, with a small cap. An unchanged
+        # extracted term is not a stopping criterion: the e-graph can still be
+        # progressing while the cheapest representative stays the same
+        # (docs/known-issues.md, B2).
         if self.verbose:
             print("Running aux predicate introduction...")
             t0 = time.perf_counter()
-        self.egraph.run(
-            run(aux_set, scheduler=back_off()) * 1
-            + run(extraction_rules, scheduler=back_off()) * 10
-        )
+        best = None
+        best_str = ""
+        for aux_round in range(self._AUX_ROUNDS):
+            self.egraph.run(
+                run(aux_set, scheduler=back_off()) * 1
+                + run(extraction_rules, scheduler=back_off()) * 10
+            )
+            best = self.egraph.extract(cons_list, include_cost=True)
+            best_str = str(best)
+            if "Literal.AuxCall(" in best_str or not self._contains_non_ic(best_str):
+                break
         if self.verbose:
-            print(f"  Phase 2 (aux intro): {time.perf_counter() - t0:.3f}s")
-        
-        # Extract best cons_list
-        if self.verbose:
-            t0 = time.perf_counter()
-        best = self.egraph.extract(cons_list, include_cost=True)
-        best_str = str(best)
-
-        
-        if self.verbose:
-            print(f"  Extraction: {time.perf_counter() - t0:.3f}s")
+            print(f"  Phase 2 (aux intro): {time.perf_counter() - t0:.3f}s, {aux_round + 1} round(s)")
             print(f"best extracted cons_list: {best_str}...")
             print(f"After aux introduction: cost={best[1] if isinstance(best, tuple) else '?'}")
 

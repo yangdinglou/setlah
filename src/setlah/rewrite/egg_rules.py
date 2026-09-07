@@ -364,6 +364,22 @@ def grouping_quantifiers(vars: Set[Term], body: Formula, var: Term, vars1: Set[T
     # yield rewrite(body).to(Formula.grouped_forall(Set[Term](), body))
     # yield rewrite(body).to(Formula.grouped_exists(Set[Term](), body))
 
+
+@extraction.register
+def grouped_forall_consumer(vars: Set[Term], f: Formula):
+    # The consumer of grouped_forall: a universally quantified negation is a
+    # negated existential, and every lowering below (integrity constraint,
+    # auxiliary predicate, count aggregate) starts from grouped_exists.
+    #     forall vs. not f   ==   not exists vs. f
+    # equal_set has the same law one quantifier at a time
+    # (lec10_fo_A), but under its iteration budget and back-off scheduler a
+    # chain of n levels is not always flipped; the grouping in this ruleset
+    # does complete, so the grouped form is the reliable entry point
+    # (docs/known-issues.md, B2).
+    yield rewrite(Formula.grouped_forall(vars, Formula.Not(f))).to(
+        Formula.Not(Formula.grouped_exists(vars, f))
+    )
+
 @extraction.register
 def grouping_and(formulas: Set[GeneralLit], f: GeneralLit,g: GeneralLit):
     yield rewrite(Formula.And(Formula.Lit(f), Formula.Lit(g))).to(Formula.grouped_and(Set[GeneralLit](f, g)))
