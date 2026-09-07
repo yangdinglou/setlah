@@ -15,7 +15,7 @@ Reproduce with `setlah tests/inputs/regressions/<file>.sl [facts.lp] --print-asp
 | [B4](#b4) | a body atom loses its arguments | 0 | wrong output | open |
 | [B5](#b5) | large models cannot be compiled at all | 1 | limitation | open |
 | [B6](#b6) | safety check rejects sound recursive and equality-bound rules | 1 | limitation | open |
-| [B7](#b7) | auxiliary predicate names wrap at five; two unrelated auxiliaries share a name | 0 | **wrong output, silent** | open |
+| [B7](#b7) | auxiliary predicate names wrap at five; two unrelated auxiliaries share a name | 0 | **wrong output, silent** | **fixed** |
 
 Severity: *wrong output* means the compiler exits 0 and the emitted ASP does
 not faithfully encode the model, so a caller that trusts the exit code gets a
@@ -305,7 +305,14 @@ compiled __aux_0 = __aux_0(1) __aux_0(2) __aux_0(3) __aux_0(4) __aux_0(7)
 intended __aux_0 = __aux_0(1) __aux_0(2) __aux_0(3) __aux_0(4)
 ```
 
-**Fix direction.** One counter per compilation unit rather than per
-constraint, or names qualified by the constraint they came from. `TODO.md`
-already records two `_aux_counter` globals across `rewrite/rw.py` and
-`transpile/aux.py`; this is what that duplication costs.
+**Fix** (commit `fd5ca93`, branch `direct-lowering`). One counter per
+compilation unit. The rewriter numbers its auxiliaries from an instance
+counter reset in `Rewriter.rewrite_program` and exports the next free index
+as `program._aux_next`; `transpile_program_to_asp` builds an `AuxNamer`
+from it and threads it down to `_preprocess_aux_calls`, so the transpiler's
+auxiliaries continue the numbering instead of restarting at `__aux_0`. Both
+module globals are gone, which also makes compiling the same model twice in
+one process give the same text. Tests: `test_b7_*` in
+`tests/test_regressions_known_issues.py`; the semantic one compiles the
+reproducer in a fresh interpreter and checks the 128 intended answer sets,
+none of which picks node 7 (the unfixed compiler leaves 8).

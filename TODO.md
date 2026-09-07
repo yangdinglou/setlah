@@ -9,12 +9,11 @@ verification queries, Alloy commands translated by PORTUS) with the
 
 ## Correctness
 
-- **B7, wrong output: auxiliary names wrap at five.** A constraint needing a
-  sixth auxiliary reuses `__aux_0`, ASP unions the two definitions and a
-  cycle closes through the auxiliary chain. Exit 0, clean-looking program,
-  wrong answers. Reproducer `tests/inputs/regressions/aux_collision_depth6.{sl,lp}`.
-  Fix: one counter per compilation unit, or qualify names by constraint.
-  Check whether any Portus result depends on it (those models nest to 15).
+- **B7, wrong output: auxiliary names wrap at five.** Fixed in `fd5ca93`
+  (one counter per compilation unit, `AuxNamer` threaded from the rewriter
+  into the transpiler). Reproducer
+  `tests/inputs/regressions/aux_collision_depth6.{sl,lp}`. Still to check:
+  whether any Portus result depended on it (those models nest to 15).
 
 - **Make every fallback a hard error.** Six `except Exception` blocks in
   `rewrite/rw.py` and `transpile/aux.py` end in `break`, `continue`, `pass`
@@ -39,9 +38,9 @@ verification queries, Alloy commands translated by PORTUS) with the
 - **Unify the two auxiliary-predicate paths.** `rewrite/rw.py` and
   `transpile/aux.py` each carry their own `_parse_aux_call`,
   `_generate_aux_rule`, `_extract_balanced_call`, `_split_top_level`,
-  `_parse_set_call`, `_extract_var_name`, and, worst, their own module-level
-  `_aux_counter`, both starting at 0 and both minting `__aux_N`, although a
-  comment calls them shared. That is a latent name collision.
+  `_parse_set_call`, `_extract_var_name`. The two module-level
+  `_aux_counter` globals, which caused B7, were replaced by one counter per
+  compilation unit in `fd5ca93`; the duplicated parsing helpers remain.
 
 ## Architecture
 
