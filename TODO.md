@@ -20,10 +20,14 @@ verification queries, Alloy commands translated by PORTUS) with the
   or `return`; `transpile/constraint.py` prints a constraint it could not
   lower as the comment `:- % raw-constraint ...` and exits 0 (B2); on `main`,
   `Rewriter.rewrite_block` returns the unrewritten block when a rewrite
-  raises. B1 stayed hidden for a whole workload because each layer swallowed
-  the previous one's failure. B2 is reachable on ordinary input: Ivy's
-  frame axioms as written fall raw on 130 of 142 DuoAI queries (2026-09-05). A `--lenient` flag can keep the old behaviour
-  for anyone who wants it.
+  raises (`direct-lowering` re-raises since `b4c7661`). B1 stayed hidden
+  for a whole workload because each layer swallowed the previous one's
+  failure. B2 is reachable on ordinary input: Ivy's frame axioms as
+  written fall raw on 130 of 142 DuoAI queries (2026-09-05). The
+  limits-harness shapes of B2 (flat antecedents over 8 and 11 variables,
+  nesting from depth 7) are fixed in `0be936a`; the ite-valued frame
+  equality still falls raw and exits 0. A `--lenient` flag can keep the
+  old behaviour for anyone who wants it.
 - **B4, wrong code: a body atom loses its arguments.** Exit 0, silently
   vacuous constraint. Reproducer `tests/inputs/regressions/wrongcode_d1_*`;
   not yet minimised below one 123-line statement. Highest-severity open item.
@@ -62,6 +66,16 @@ verification queries, Alloy commands translated by PORTUS) with the
   three runs, two or three distinct outputs). Semantically equal so far, but
   it defeats byte-level differential testing and could mask a real change.
   Likely egglog set iteration order; pin it or sort before printing.
+- **The rewrite schedule is a budget, not a fixpoint.** `equal_set` runs
+  15 iterations and `extraction` 20 (as 4 x 5 since `0be936a`) under
+  egglog's back-off scheduler, and the normalisations they must complete
+  are chains of n sequential steps (one quantifier level, one literal per
+  iteration). Which chains finish depends on the ban pattern, so lowering
+  is non-monotone in formula size (B2). Saturating instead blows up on the
+  propositional rules (4 min for 8 variables without the scheduler). The
+  direct lowering removes the problem; within egglog, a pre-normalisation
+  in Python (NNF, `forall` as `not exists not`) before saturation would
+  shorten every chain to a constant.
 - **One saturation per block, not per constraint.** Profiling a 31-constraint
   DuoAI query: 7.4 s total, of which rewriting 5.8 s across 38 per-constraint
   egglog saturations (egglog internals 3.8 s). Reusing the e-graph, or

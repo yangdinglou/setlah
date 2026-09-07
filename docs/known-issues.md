@@ -10,7 +10,7 @@ Reproduce with `setlah tests/inputs/regressions/<file>.sl [facts.lp] --print-asp
 | id | symptom | exit | severity | status |
 |---|---|---|---|---|
 | [B1](#b1) | crash: `Expected Literal(atom, sign), got Literal.AuxCall(...)` | 1 | blocker | **fixed** |
-| [B2](#b2) | `:- % raw-constraint ...` in the output | 0 | wrong output | open |
+| [B2](#b2) | `:- % raw-constraint ...` in the output | 0 | wrong output | partly fixed |
 | [B3](#b3) | unsafe auxiliary rule; Clingo rejects the program | 0 | wrong output | **fixed** |
 | [B4](#b4) | a body atom loses its arguments | 0 | wrong output | open |
 | [B5](#b5) | large models cannot be compiled at all | 1 | limitation | **fixed** |
@@ -138,9 +138,65 @@ raw on 568. The earlier reading that B1 explained all of it was wrong. The fallb
 gives up, `transpile/constraint.py` prints the formula as a comment) is a
 real incompleteness of the lowering, and it exits 0.
 
-**Suggested fix.** Make the fallback a hard error, so incompleteness is
-visible; a caller can then decide. Emitting a comment where a constraint
-belongs is never safe, and `exit 0` on it is worse.
+**The harness shapes, traced 2026-09-07.** The limits harness
+(setlah-apps `ports/setlah-limits/NOTES.md`) found the fallback on five-line
+models: one universal implication with a flat conjunctive antecedent over 8
+or 11 variables (7, 9, 10, 12, 13 lowered), and nested universal
+implications from depth 7. Reproducers `raw_v08_flat_antecedent.sl`,
+`raw_v11_flat_antecedent.sl`, `raw_n07_nested_universals.sl`. Extracting the
+term after each rewrite phase gave three causes, none of them the cost
+tie-break the harness notes guessed at (the zero-cost integrity form always
+wins when it exists; it did not exist):
+
+1. `grouped_forall` had producers (`egg_rules.py`, `grouping_quantifiers`)
+   and no consumer. `equal_set` flips one quantifier level per iteration
+   (`forall x. not f == not exists x. f`, `lec10_fo_A`), and under its
+   15-iteration budget and back-off scheduler the chain over 8 levels did
+   not always complete (for 7 variables three levels flipped, enough to
+   form an `AuxCall` and let the recursive pass finish; for 8, none). The
+   grouping in `extraction` did complete, leaving `grouped_forall(vs,
+   Not(grouped_and_lit(...)))` with nothing to lower it.
+2. The auxiliary rule (`aux_set`) ran once, right after `extraction` had
+   spent its 20 iterations under one back-off scheduler, whose bans double
+   in length. The grouping chains (one literal, one quantifier level per
+   iteration) finish late or not at all under those bans, so for some
+   literal counts `aux_set` ran before its input existed. Removing the
+   `grouped_forall` producers, as first suggested, fixed 8 variables and
+   left 11 and depth 7 raw: it only changed the match counts. Raising the
+   budgets, as the harness notes found, does not converge: without the
+   scheduler the 8-variable model reaches the integrity form in four
+   minutes and the 11-variable one not in ten.
+3. `_rewrite_single_constraint` lowers one quantifier level per recursive
+   pass and was capped at `max_depth=5` (docstring said 3); with the
+   transpiler's one residual auxiliary, nesting stopped at depth 6.
+
+**Fix** (commit `0be936a`, branch `direct-lowering`). An `extraction` rule
+`grouped_forall(vs, Not f) -> Not(grouped_exists(vs, f))`, from which the
+integrity-constraint, auxiliary and count lowerings all start; the 20
+extraction iterations run as four runs of five so the scheduler's bans
+reset between them; the aux round repeats up to four times until the term
+is an integrity constraint or holds an `AuxCall` (an unchanged extracted
+term is not a stopping criterion: the e-graph progresses while the
+cheapest representative stays the same); and the recursion cap is a safety
+stop at 64. With that every flat (3 to 13 variables), nested (depth 1 to
+8) and width model of the harness lowers in 0.4 to 1.8 s, and so do
+`raw_f1` and `raw_f2`. Differential on 55 local models: 40 byte-identical,
+15 changed only in guard order, blank lines or an equivalent auxiliary
+shape, plus the four previously raw ones; answer sets equal on the examples
+with instances.
+
+**Still open.** `raw_f0_ite_frame_equality.sl` (Ivy's `post(V) = ite(V = K,
+new, pre(V))` under the witness guards) still falls back; the strict xfail
+`test_b2_ite_frame_equality_is_lowered` stays. That is the shape behind the
+130 of 142 DuoAI and 568 of 792 mypyvy plain-translation fallbacks, and it
+is what the direct lowering (Track B of `docs/refactor-brief.md`) is for:
+the underlying fragility is a normalisation that needs a chain of n
+sequential rewrites inside a budgeted, throttled saturation, which no
+schedule makes monotone. The fallback also still exits 0.
+
+**Suggested fix for the rest.** Make the fallback a hard error, so
+incompleteness is visible; a caller can then decide. Emitting a comment
+where a constraint belongs is never safe, and `exit 0` on it is worse.
 
 ---
 
