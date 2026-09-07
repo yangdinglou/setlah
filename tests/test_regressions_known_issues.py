@@ -333,3 +333,27 @@ def test_b2_flat_antecedent_is_enforced():
 
     assert count_models(asp + "\n" + facts) == 256
     assert count_models(asp + "\n" + facts.replace("p(6).", "")) == 0
+
+
+# --------------------------------------------------------------------- B8
+
+@pytest.mark.parametrize("model", ["exists_binders8_ok.sl", "exists_binders9_varlist_crash.sl"])
+def test_b8_wide_existential_is_lowered(model):
+    """An existential over nine or more bound variables used to reach the transpiler
+    with an unevaluated subst_varlist(...) in a variable list (docs/known-issues.md, B8)."""
+    asp = compile_model(model)
+    assert "subst_" not in asp and "raw-constraint" not in asp and "AuxCall" not in asp, asp
+    assert any(l.startswith(":- ") for l in asp.splitlines()), asp
+
+
+# ------------------------------------------ B2: or-of-and shape (open)
+
+def test_b2_or_of_and_2x2_is_lowered():
+    asp = compile_model("or_of_and_2x2_ok.sl")
+    assert "raw-constraint" not in asp, asp
+
+
+@pytest.mark.xfail(strict=True, reason="known-issues B2: a universal over three or more disjuncts of conjunctions of equalities falls back")
+def test_b2_or_of_and_3x2_is_lowered():
+    asp = compile_model("or_of_and_3x2_fallback.sl")
+    assert "raw-constraint" not in asp, asp

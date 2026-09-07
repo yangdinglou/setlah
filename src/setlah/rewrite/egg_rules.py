@@ -242,13 +242,13 @@ def exists_to_anonymous(phi: Formula, x: Term, body: Formula, vs: MultiSet[Term]
 # Recursively replace all occurrences of `old` term with `new` term.
 # Used to substitute a variable with Term.Anon() when dropping quantifiers.
 
-@function
+@function(cost=10000)
 def subst_varlist(args: VarList, old: Term, new: Term) -> VarList: ...
 
-@function
+@function(cost=10000)
 def subst_term(t: Term, old: Term, new: Term) -> Term: ...
 
-@function
+@function(cost=10000)
 def subst_formula(f: Formula, old: Term, new: Term) -> Formula: ...
 
 
