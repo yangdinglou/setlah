@@ -21,11 +21,26 @@ from .normalize import _extract_balanced_call, _split_top_level_commas
 # 2b. AUX PREDICATE PREPROCESSING
 # =============================================================================
 
-# Counter for generating unique aux predicate names (module-level)
-_aux_counter = 0
+class AuxNamer:
+    """Mints ``__aux_N`` names for one compilation unit.
+
+    The rewriter numbers the auxiliaries it lowers itself and reports the next
+    free index as ``program._aux_next``; the transpiler continues from there,
+    so an auxiliary the rewriter left in place (its recursion depth exhausted)
+    never reuses a name the rewriter already gave out.  See
+    ``docs/known-issues.md`` (B7).
+    """
+
+    def __init__(self, start: int = 0) -> None:
+        self.next = start
+
+    def mint(self) -> str:
+        name = f"__aux_{self.next}"
+        self.next += 1
+        return name
 
 
-def _preprocess_aux_calls(block_expr_str: str) -> tuple[str, list[str]]:
+def _preprocess_aux_calls(block_expr_str: str, namer: AuxNamer | None = None) -> tuple[str, list[str]]:
     """Pre-process AuxCall patterns in the block expression.
 
     Two spellings occur, and both are lowered to auxiliary rules here:
@@ -43,10 +58,14 @@ def _preprocess_aux_calls(block_expr_str: str) -> tuple[str, list[str]]:
     call reaches the renderer, which raises ``Expected Literal(atom, sign)``.
     See ``docs/known-issues.md`` (B1).
 
+    ``namer`` supplies the names; a fresh one starting at ``__aux_0`` is used
+    when none is given (standalone use, tests).
+
     Returns:
         (modified_expr_str, list_of_aux_rules)
     """
-    global _aux_counter
+    if namer is None:
+        namer = AuxNamer()
 
     aux_rules: list[str] = []
     result = block_expr_str
@@ -79,8 +98,7 @@ def _preprocess_aux_calls(block_expr_str: str) -> tuple[str, list[str]]:
                 break
 
             # Generate aux predicate name
-            aux_name = f"__aux_{_aux_counter}"
-            _aux_counter += 1
+            aux_name = namer.mint()
 
             # Generate one aux rule per cube: aux_name(free_vars) :- cube
             for cube in cubes:

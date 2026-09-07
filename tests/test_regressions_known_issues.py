@@ -163,3 +163,62 @@ def test_b2_ite_frame_equality_is_lowered():
     starts failing the moment the lowering handles the shape, and then the mark is removed."""
     asp = compile_model("raw_f0_ite_frame_equality.sl")
     assert "raw-constraint" not in asp, asp
+
+
+# --------------------------------------------------------------------- B7
+
+def aux_heads(asp):
+    """Names of the auxiliary predicates defined in the compiled program."""
+    return {l.split("(")[0] for l in asp.splitlines() if l.startswith("__aux_") and ":-" in l}
+
+
+def test_b7_sixth_auxiliary_gets_a_fresh_name():
+    """Nested universal implications of depth 6 need six auxiliaries; the sixth,
+    lowered by the transpiler after the rewriter's recursion depth is spent, must
+    not reuse the rewriter's first name (docs/known-issues.md, B7)."""
+    asp = compile_model("aux_collision_depth6.sl")
+    assert "AuxCall" not in asp and "raw-constraint" not in asp, asp
+    heads = aux_heads(asp)
+    assert len(heads) == 6, asp
+    # every auxiliary has exactly one definition: no accidental disjunction
+    for head in heads:
+        assert sum(1 for l in asp.splitlines() if l.startswith(head + "(")) == 1, asp
+
+
+def compile_model_in_fresh_process(name):
+    """Compile through the command line in a new interpreter, as the study's
+    runners do, so module state left by earlier tests cannot mask a defect."""
+    import subprocess
+    import sys
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "setlah", os.path.join(INPUTS, name), "--print-asp"],
+        capture_output=True, text=True, check=True,
+    )
+    return proc.stdout
+
+
+def test_b7_program_answers_the_intended_question():
+    """pick(V0) is allowed unless some 6-step rel path from V0 ends in a non-p
+    node: with the facts that forbids node 7 only, so 2^7 answer sets remain.
+    The unfixed compiler unions the two `__aux_0` definitions and leaves 8."""
+    clingo = pytest.importorskip("clingo")
+    asp = compile_model_in_fresh_process("aux_collision_depth6.sl")
+    ctl = clingo.Control(["0", "--warn=none"])
+    ctl.add("base", [], asp + "\n" + read_facts("aux_collision_depth6.lp"))
+    ctl.ground([("base", [])])
+    picks = []
+    ctl.solve(on_model=lambda m: picks.append(
+        {s.arguments[0].number for s in m.symbols(atoms=True) if s.name == "pick"}))
+    assert len(picks) == 128, len(picks)
+    assert not any(7 in p for p in picks)
+    assert any(p == set(range(7)) for p in picks)
+
+
+def test_b7_auxiliary_names_start_afresh_per_compilation():
+    """One counter per compilation unit: compiling the same model twice in one
+    process gives the same program, not names continuing from the first run."""
+    first = compile_model("aux_c2_negated_disjunction_crash.sl")
+    second = compile_model("aux_c2_negated_disjunction_crash.sl")
+    assert first == second
+    assert "__aux_0(" in first, first

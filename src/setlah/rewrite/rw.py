@@ -27,9 +27,6 @@ def split_cost_model(egraph: EGraph, expr: Expr, children_costs: list[int]) -> i
     # Default: base cost 1 + children
     return 1 + sum(children_costs)
 
-# Global counter for aux predicate naming (shared with transpiler)
-_aux_counter = 0
-
 class Rewriter:
     def __init__(self, verbose: bool = False, *, entailment_elim: str = "asp", enable_cost_conversion: bool = False):
         self.egraph = None
@@ -39,6 +36,11 @@ class Rewriter:
         self.entailment_elim = entailment_elim
         self.enable_cost_conversion = enable_cost_conversion
         self.aux_rules: list[str] = []  # Collected aux rules
+        # Next free index for ``__aux_N`` names. One counter per compilation
+        # unit: reset in :meth:`rewrite_program` and handed to the transpiler
+        # as ``program._aux_next`` so that the auxiliaries it lowers itself
+        # continue the numbering instead of restarting at zero (B7).
+        self._next_aux = 0
 
     def rewrite_program(self, program: nodes.Program, convert_only=False) -> nodes.Program:
         # Run semantic checker first to collect entailment information
@@ -79,6 +81,7 @@ class Rewriter:
         
         new_blocks = []
         self.aux_rules = []  # Reset aux rules for this program
+        self._next_aux = 0   # ... and the auxiliary name counter with them
         for block in program.blocks:
             if self.verbose:
                 print("Rewriting Block:")
@@ -88,7 +91,9 @@ class Rewriter:
                 print("Finished Rewriting Block.\n")
         program.blocks = new_blocks
         
-        # Store collected aux rules in the program for the transpiler
+        # Store collected aux rules in the program for the transpiler, and the
+        # next free auxiliary index so its own auxiliaries do not collide.
+        program._aux_next = self._next_aux  # type: ignore[attr-defined]
         if self.aux_rules:
             program._aux_rules = self.aux_rules  # type: ignore[attr-defined]
             if self.verbose:
@@ -601,8 +606,6 @@ class Rewriter:
         Returns:
             (modified_expr_str, list_of_aux_rules_as_asp)
         """
-        global _aux_counter
-        
         aux_rules: list[str] = []
         result = expr_str
         
@@ -628,8 +631,8 @@ class Rewriter:
                 cubes_asp, free_vars = aux_info
 
                 # Generate aux predicate name
-                aux_name = f"__aux_{_aux_counter}"
-                _aux_counter += 1
+                aux_name = f"__aux_{self._next_aux}"
+                self._next_aux += 1
 
                 # Generate one aux rule per DNF cube: aux_name(free_vars) :- lits_in_cube
                 for cube_asp in cubes_asp:

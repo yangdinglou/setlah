@@ -18,7 +18,7 @@ from .normalize import (
     _replace_singleton_vars_in_line,
     _alpha_normalize_var_in_lit,
 )
-from .aux import _preprocess_aux_calls, _extract_aux_pred_types
+from .aux import AuxNamer, _preprocess_aux_calls, _extract_aux_pred_types
 from .egg_parsing import _parse_block, _extract_pred_patterns_from_block
 from .rendering import _rule_to_asp, _general_lit_to_body_lit
 from .constraint import _constraint_to_asp_lines
@@ -50,13 +50,18 @@ def transpile_block_expr_to_asp(
     pred_arg_types: Any = None,
     grounding: bool = False,
     rewriter_aux_rules: list[str] | None = None,
+    aux_namer: AuxNamer | None = None,
 ) -> str:
-    """Convert a single extracted egg `Block(...)` expression (string form) to ASP source."""
+    """Convert a single extracted egg `Block(...)` expression (string form) to ASP source.
+
+    ``aux_namer`` names the auxiliary predicates this pass lowers itself; it
+    must continue the rewriter's numbering (see ``AuxNamer``).
+    """
     original_str = block_expr_str
     block_expr_str = _normalize_extracted_egg_str(block_expr_str)
 
     # Pre-process: extract AuxCall patterns and generate aux rules
-    block_expr_str, aux_rules = _preprocess_aux_calls(block_expr_str)
+    block_expr_str, aux_rules = _preprocess_aux_calls(block_expr_str, aux_namer)
 
     # Combine local aux rules with rewriter-level aux rules for type inference
     all_aux_rules = list(aux_rules)

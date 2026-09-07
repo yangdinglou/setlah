@@ -15,7 +15,7 @@ import clingo.ast
 
 from .ir import TranspileError, IRRule, IRConstraint
 from .normalize import _split_top_level_commas
-from .aux import _extract_aux_pred_types
+from .aux import AuxNamer, _extract_aux_pred_types
 from .safety import _infer_safety_guards
 from .pipeline import transpile_block_expr_to_asp
 
@@ -38,8 +38,10 @@ def transpile_program_to_asp(program: Any, *, grounding: bool = False) -> str:
     entailment_specs = getattr(program, "_entailment_specs", None)
     pred_arg_types = getattr(program, "_pred_arg_types", None)
 
-    # Get aux rules collected during rewriting
+    # Get aux rules collected during rewriting, and continue its auxiliary
+    # numbering so the names minted here cannot collide with them (B7).
     rewriter_aux_rules = getattr(program, "_aux_rules", [])
+    aux_namer = AuxNamer(getattr(program, "_aux_next", 0))
 
     blocks = getattr(program, "blocks", None)
     if blocks is None:
@@ -57,6 +59,7 @@ def transpile_program_to_asp(program: Any, *, grounding: bool = False) -> str:
                 pred_arg_types=pred_arg_types,
                 grounding=grounding,
                 rewriter_aux_rules=rewriter_aux_rules,
+                aux_namer=aux_namer,
             )
         )
 
