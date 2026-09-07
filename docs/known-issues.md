@@ -15,6 +15,7 @@ Reproduce with `setlah tests/inputs/regressions/<file>.sl [facts.lp] --print-asp
 | [B4](#b4) | a body atom loses its arguments | 0 | wrong output | open |
 | [B5](#b5) | large models cannot be compiled at all | 1 | limitation | open |
 | [B6](#b6) | safety check rejects sound recursive and equality-bound rules | 1 | limitation | open |
+| [B7](#b7) | auxiliary predicate names wrap at five; two unrelated auxiliaries share a name | 0 | **wrong output, silent** | open |
 
 Severity: *wrong output* means the compiler exits 0 and the emitted ASP does
 not faithfully encode the model, so a caller that trusts the exit code gets a
@@ -254,3 +255,57 @@ domain guard, but which reject rules that are safe:
   predicate that is never defined at all). Found 2026-09-05 through sliced
   compilation of a PORTUS command; a two-pass check, or an "undefined
   predicate" diagnostic, would remove both problems.
+
+## B7. Auxiliary predicate names wrap at five, exit 0 {#b7}
+
+**Mechanism.** A constraint that needs more than five auxiliary predicates
+reuses `__aux_0` for the sixth. ASP reads two rules with the same head as one
+disjunctive definition, so the two unrelated auxiliaries are unioned, and
+because the outer auxiliary depends on the inner chain this also closes a
+cycle: `__aux_0` -> `__aux_4` -> `__aux_3` -> `__aux_2` -> `__aux_1` ->
+`__aux_0`.
+
+**Trigger.** Exactly at the sixth auxiliary. Nested universal implications of
+depth 1 to 5 emit 1 to 5 distinct auxiliaries and are correct; depth 6 emits
+five names for six auxiliaries.
+
+**Impact.** Silent wrong output on a model that compiles cleanly, which makes
+it more dangerous than [B2](#b2): B2 at least leaves a visible
+`raw-constraint` comment, while B7 produces a plausible program that answers
+the wrong question.
+
+Corpus exposure, checked 2026-09-07: the three memory-model ports have one
+auxiliary each, so none. A sample of 12 DuoAI and mypyvy translations shows
+repeated `__aux_N` heads in 7, but those are the *intended* multi-cube
+auxiliaries: one mint, one disjunction, one rule per DNF cube, emitted
+adjacently with the same free variables. A true B7 collision is
+distinguishable in the output: the second definition arrives from the
+transpiler's fallback path, after the blank line that separates the
+rewriter's rules from the transpiler's, with a different variable level. It
+needs a constraint that exhausts the rewriter's `max_depth` (five levels)
+and leaves a residual `AuxCall` for the transpiler. No Portus output is on
+disk to check; those models nest to depth 15 and are where it would show.
+
+**Mechanism, precisely.** `rewrite/rw.py:_rewrite_single_constraint` lowers
+one `Literal.AuxCall` level per recursion with the module global
+`rw._aux_counter`, default `max_depth=5` (its docstring still says 3). At
+depth 0 the residual call stays in the printed constraint;
+`transpile/aux.py:_preprocess_aux_calls`, whose docstring calls itself a
+fallback for B1, then lowers it with the *other* module global
+`aux._aux_counter`, which has never seen the rewriter's numbers and starts at
+`__aux_0`. Neither counter is reset or shared.
+
+**Reproducer.** `tests/inputs/regressions/aux_collision_depth6.sl` with
+`aux_collision_depth6.lp`. The compiled program derives `__aux_0(7)`, which
+the innermost definition forbids: `__aux_0(X)` means "some successor of X is
+not p", node 7's only successor is 0, and `p(0)` holds.
+
+```
+compiled __aux_0 = __aux_0(1) __aux_0(2) __aux_0(3) __aux_0(4) __aux_0(7)
+intended __aux_0 = __aux_0(1) __aux_0(2) __aux_0(3) __aux_0(4)
+```
+
+**Fix direction.** One counter per compilation unit rather than per
+constraint, or names qualified by the constraint they came from. `TODO.md`
+already records two `_aux_counter` globals across `rewrite/rw.py` and
+`transpile/aux.py`; this is what that duplication costs.

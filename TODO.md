@@ -9,6 +9,13 @@ verification queries, Alloy commands translated by PORTUS) with the
 
 ## Correctness
 
+- **B7, wrong output: auxiliary names wrap at five.** A constraint needing a
+  sixth auxiliary reuses `__aux_0`, ASP unions the two definitions and a
+  cycle closes through the auxiliary chain. Exit 0, clean-looking program,
+  wrong answers. Reproducer `tests/inputs/regressions/aux_collision_depth6.{sl,lp}`.
+  Fix: one counter per compilation unit, or qualify names by constraint.
+  Check whether any Portus result depends on it (those models nest to 15).
+
 - **Make every fallback a hard error.** Six `except Exception` blocks in
   `rewrite/rw.py` and `transpile/aux.py` end in `break`, `continue`, `pass`
   or `return`; `transpile/constraint.py` prints a constraint it could not
