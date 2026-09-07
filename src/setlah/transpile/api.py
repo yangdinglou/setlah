@@ -13,11 +13,11 @@ from typing import Any, Callable, Iterable
 import clingo
 import clingo.ast
 
-from .ir import TranspileError, IRRule, IRConstraint
+from .ir import TranspileError, IRRule, IRConstraint, PrintedBlock
 from .normalize import _split_top_level_commas
 from .aux import AuxNamer, _extract_aux_pred_types
 from .safety import _infer_safety_guards
-from .pipeline import transpile_block_expr_to_asp
+from .pipeline import transpile_block_expr_to_asp, transpile_printed_block_to_asp
 
 
 # =============================================================================
@@ -48,6 +48,18 @@ def transpile_program_to_asp(program: Any, *, grounding: bool = False) -> str:
         raise TranspileError("Expected Program with .blocks")
 
     for block in blocks:
+        if isinstance(block, PrintedBlock):
+            parts.append(
+                transpile_printed_block_to_asp(
+                    block,
+                    entailment_specs=entailment_specs,
+                    pred_arg_types=pred_arg_types,
+                    grounding=grounding,
+                    rewriter_aux_rules=rewriter_aux_rules,
+                    aux_namer=aux_namer,
+                )
+            )
+            continue
         if isinstance(block, tuple) and len(block) == 2 and isinstance(block[1], int):
             block_expr = block[0]
         else:

@@ -95,6 +95,91 @@ def _normalize_extracted_egg_str(s: str) -> str:
     return _expand_bindings(final_expr, bindings)
 
 
+def _normalize_printed_item(s: str) -> str:
+    """Turn one printed egglog term (a Rule or a Constraint) into a pure Python expression.
+
+    egglog prints let-style bindings for shared subterms before the term,
+    either one per line or comma-separated, and may wrap everything in a
+    tuple with a trailing cost::
+
+        _VarList_1 = cons_var(Term.Var("R"), nil_var())
+        Constraint.integrity_constraints(Set[Term](...), Set[GeneralLit](... _VarList_1 ...))
+
+    The term is the first top-level name that is not followed by ``=``; the
+    bindings before it are substituted into it.
+    """
+    s = s.strip()
+    if not s:
+        raise TranspileError("Empty printed expression")
+    if s.startswith("(") and _extract_balanced_call(s, 0) == s:
+        s = s[1:-1].strip()
+    start = _find_expression_start(s)
+    prefix, rest = s[:start], s[start:]
+    expr = _extract_balanced_call(rest, 0)  # drops a trailing ", <cost>" if any
+    bindings = _parse_top_level_bindings(prefix) if prefix.strip() else {}
+    return _expand_bindings(expr, bindings) if bindings else expr
+
+
+def _find_expression_start(s: str) -> int:
+    """Index of the first top-level name in ``s`` that is not a ``name = value`` binding."""
+    i = 0
+    n = len(s)
+    depth = 0
+    in_str: str | None = None
+    while i < n:
+        ch = s[i]
+        if in_str is not None:
+            if ch == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if ch == in_str:
+                in_str = None
+            i += 1
+            continue
+        if ch in ("'", '"'):
+            in_str = ch
+            i += 1
+            continue
+        if ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+        elif depth == 0 and (ch.isalpha() or ch == "_"):
+            j = i + 1
+            while j < n and (s[j].isalnum() or s[j] == "_"):
+                j += 1
+            k = j
+            while k < n and s[k].isspace():
+                k += 1
+            if k < n and s[k] == "=" and not (k + 1 < n and s[k + 1] == "="):
+                # a binding: skip its value up to the next top-level separator
+                m = k + 1
+                vdepth = 0
+                v_in_str: str | None = None
+                while m < n:
+                    c2 = s[m]
+                    if v_in_str is not None:
+                        if c2 == "\\" and m + 1 < n:
+                            m += 2
+                            continue
+                        if c2 == v_in_str:
+                            v_in_str = None
+                    elif c2 in ("'", '"'):
+                        v_in_str = c2
+                    elif c2 in "([{":
+                        vdepth += 1
+                    elif c2 in ")]}":
+                        vdepth -= 1
+                    elif vdepth == 0 and c2 in ",;\n":
+                        break
+                    m += 1
+                i = m + 1
+                continue
+            return i
+        i += 1
+    raise TranspileError(f"No expression found in printed egglog term: {s[:200]}")
+
+
 def _extract_balanced_call(s: str, start: int) -> str:
     """Extract a call-like substring starting at `start` (e.g. the 'B' in 'Block(').
 

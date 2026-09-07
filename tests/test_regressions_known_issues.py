@@ -222,3 +222,72 @@ def test_b7_auxiliary_names_start_afresh_per_compilation():
     second = compile_model("aux_c2_negated_disjunction_crash.sl")
     assert first == second
     assert "__aux_0(" in first, first
+
+
+# --------------------------------------------------------------------- B5
+
+def test_normalize_printed_item_multiline_bindings():
+    """A printed constraint with egglog's one-per-line bindings before the term."""
+    from setlah.transpile.normalize import _normalize_printed_item
+
+    text = (
+        '_VarList_1 = cons_var(Term.Var("R"), cons_var(Term.Var("C"), nil_var()))\n'
+        'Constraint.integrity_constraints(\n'
+        '    Set[Term](Term.Var("C"), Term.Var("R")),\n'
+        '    Set[GeneralLit](GeneralLit.from_literal(Literal(Atom.Pred("initial", _VarList_1), True)), '
+        'GeneralLit.from_literal(Literal(Atom.Pred("sudoku", _VarList_1), False))),\n'
+        ')'
+    )
+    out = _normalize_printed_item(text)
+    assert out.startswith("Constraint.integrity_constraints(")
+    assert "_VarList_1" not in out
+    assert out.count('cons_var(Term.Var("R")') == 2
+
+
+def test_normalize_printed_item_tuple_with_cost_and_comma_bindings():
+    """The tuple form "(bindings, term, cost)" that extract(include_cost=True) prints."""
+    from setlah.transpile.normalize import _normalize_printed_item
+
+    text = '(_A_1 = Term.Var("X"), _B_2 = Formula.Lit(GeneralLit.from_literal(Literal(Atom.Pred("p", cons_var(_A_1, nil_var())), True))), Constraint(Vec[LetExpr](), _B_2), 12)'
+    out = _normalize_printed_item(text)
+    assert out.startswith("Constraint(") and out.endswith(")")
+    assert "_A_1" not in out and "_B_2" not in out and ", 12" not in out
+
+
+def test_b5_transpiler_takes_one_printed_term_per_constraint():
+    """The transpiler parses statements one at a time, so a block of 1,000 constraints is
+    not one 1,000-deep expression (docs/known-issues.md, B5)."""
+    from setlah.transpile.ir import PrintedBlock
+    from setlah.transpile.pipeline import transpile_printed_block_to_asp
+
+    rule = (
+        'Rule(Atom.Pred("pick", cons_var(Term.Var("X"), nil_var())), '
+        'Set[Formula](Formula.Lit(GeneralLit.from_literal(Literal(Atom.Pred("dom_S", cons_var(Term.Var("X"), nil_var())), True)))), True)'
+    )
+    constraint = (
+        'Constraint.integrity_constraints(Set[Term](Term.Var("X")), Set[GeneralLit]('
+        'GeneralLit.from_literal(Literal(Atom.Pred("pick", cons_var(Term.Var("X"), nil_var())), True)), '
+        'GeneralLit.from_literal(Literal(Atom.Pred("bad%d", cons_var(Term.Var("X"), nil_var())), True))))'
+    )
+    block = PrintedBlock(rules=[rule], constraints=[constraint % i for i in range(1000)])
+    asp = transpile_printed_block_to_asp(block, pred_arg_types={"pick": ("S",), "dom_S": ("S",)})
+    lines = asp.splitlines()
+    assert sum(1 for l in lines if l.startswith(":- ")) == 1000
+    assert ":- pick(X), bad999(X)." in lines
+
+
+def test_b5_block_of_320_constraints_compiles():
+    """320 constraints in one block: past both the parser cap (about 200) and egglog's
+    own registration limit on a block-sized cons list (about 300)."""
+    source = ["ExtDOM S: INT.", "ExtPred tag: (S).", "", "[", "    pick(X)? :- dom_S(X)."]
+    for i in range(320):
+        source.append("    (\\forall X. (\\impl (\\and pick(X) tag(X)) (\\neg bad%d(X))))." % i)
+        source.append("    bad%d(X)? :- dom_S(X)." % i)
+    source.append("]")
+    program = Parser().parse("\n".join(source) + "\n")
+    with contextlib.redirect_stdout(io.StringIO()):
+        rewritten = Rewriter().rewrite_program(program, convert_only=False)
+    asp = transpile_program_to_asp(rewritten)
+    constraints = [l for l in asp.splitlines() if l.startswith(":- ")]
+    assert len(constraints) == 320, len(constraints)
+    assert any("bad319" in l for l in constraints)

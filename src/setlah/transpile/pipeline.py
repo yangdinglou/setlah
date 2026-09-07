@@ -11,15 +11,16 @@ import ast as pyast
 from dataclasses import replace as _dc_replace
 from typing import Any
 
-from .ir import IRRule, IRConstraint, TranspileError
+from .ir import IRRule, IRConstraint, PrintedBlock, TranspileError
 from .normalize import (
     _normalize_extracted_egg_str,
+    _normalize_printed_item,
     _split_top_level_commas,
     _replace_singleton_vars_in_line,
     _alpha_normalize_var_in_lit,
 )
 from .aux import AuxNamer, _preprocess_aux_calls, _extract_aux_pred_types
-from .egg_parsing import _parse_block, _extract_pred_patterns_from_block
+from .egg_parsing import _parse_block, _parse_rule, _parse_constraint, _extract_pred_patterns_from_block
 from .rendering import _rule_to_asp, _general_lit_to_body_lit
 from .constraint import _constraint_to_asp_lines
 from .entailment import _eliminate_entailed_general_lits
@@ -54,6 +55,10 @@ def transpile_block_expr_to_asp(
 ) -> str:
     """Convert a single extracted egg `Block(...)` expression (string form) to ASP source.
 
+    This is the whole-block string form; it is limited by Python's parser to
+    about 200 statements (B5).  The rewriter hands over a ``PrintedBlock``
+    instead, see :func:`transpile_printed_block_to_asp`.
+
     ``aux_namer`` names the auxiliary predicates this pass lowers itself; it
     must continue the rewriter's numbering (see ``AuxNamer``).
     """
@@ -63,22 +68,93 @@ def transpile_block_expr_to_asp(
     # Pre-process: extract AuxCall patterns and generate aux rules
     block_expr_str, aux_rules = _preprocess_aux_calls(block_expr_str, aux_namer)
 
-    # Combine local aux rules with rewriter-level aux rules for type inference
-    all_aux_rules = list(aux_rules)
-    if rewriter_aux_rules:
-        all_aux_rules.extend(rewriter_aux_rules)
-
-    try:
-        expr = pyast.parse(block_expr_str, mode="eval").body
-    except SyntaxError as e:
-        raise TranspileError(f"Failed to parse extracted egg expression as Python AST: {e}\n{block_expr_str}") from e
-
+    expr = _parse_python_expr(block_expr_str, original_str)
     try:
         rules, constraints = _parse_block(expr)
     except TranspileError as e:
         raise TranspileError(
             f"{e}\n\n--- original extracted ---\n{original_str}\n\n--- normalized ---\n{block_expr_str}"
         ) from e
+
+    return _lower_block(
+        rules,
+        constraints,
+        aux_rules,
+        entailment_specs=entailment_specs,
+        pred_arg_types=pred_arg_types,
+        grounding=grounding,
+        rewriter_aux_rules=rewriter_aux_rules,
+    )
+
+
+def transpile_printed_block_to_asp(
+    block: PrintedBlock,
+    *,
+    entailment_specs: Any = None,
+    pred_arg_types: Any = None,
+    grounding: bool = False,
+    rewriter_aux_rules: list[str] | None = None,
+    aux_namer: AuxNamer | None = None,
+) -> str:
+    """Convert a rewritten block, printed one statement at a time, to ASP source.
+
+    Each rule and each constraint is normalized, parsed and lowered on its
+    own, so no string ever holds more than one statement (B5).
+    """
+    rules: list[IRRule] = []
+    for text in block.rules:
+        normalized = _normalize_printed_item(text)
+        try:
+            rules.append(_parse_rule(_parse_python_expr(normalized, text)))
+        except TranspileError as e:
+            raise TranspileError(f"{e}\n\n--- rule ---\n{text}") from e
+
+    aux_rules: list[str] = []
+    constraints: list[IRConstraint] = []
+    for text in block.constraints:
+        normalized = _normalize_printed_item(text)
+        normalized, new_aux_rules = _preprocess_aux_calls(normalized, aux_namer)
+        aux_rules.extend(new_aux_rules)
+        try:
+            constraints.append(_parse_constraint(_parse_python_expr(normalized, text)))
+        except TranspileError as e:
+            raise TranspileError(f"{e}\n\n--- constraint ---\n{text}") from e
+
+    return _lower_block(
+        rules,
+        constraints,
+        aux_rules,
+        entailment_specs=entailment_specs,
+        pred_arg_types=pred_arg_types,
+        grounding=grounding,
+        rewriter_aux_rules=rewriter_aux_rules,
+    )
+
+
+def _parse_python_expr(normalized: str, original: str) -> pyast.AST:
+    try:
+        return pyast.parse(normalized, mode="eval").body
+    except SyntaxError as e:
+        raise TranspileError(
+            f"Failed to parse extracted egg expression as Python AST: {e}\n{normalized}"
+        ) from e
+
+
+def _lower_block(
+    rules: list[IRRule],
+    constraints: list[IRConstraint],
+    aux_rules: list[str],
+    *,
+    entailment_specs: Any,
+    pred_arg_types: Any,
+    grounding: bool,
+    rewriter_aux_rules: list[str] | None,
+) -> str:
+    """Lower parsed rules and constraints to ASP text (the phases shared by both entry points)."""
+    # Combine local aux rules with rewriter-level aux rules for type inference
+    all_aux_rules = list(aux_rules)
+    if rewriter_aux_rules:
+        all_aux_rules.extend(rewriter_aux_rules)
 
     # Extract predicate argument patterns from rules and Let-generated rules
     # This info is used to generate correct partition constraints with constants preserved

@@ -6,6 +6,7 @@ from .converter import convert_block, convert_constraint, convert_rule, to_egg, 
 from .egg_schema import Term, Atom, Literal, Formula, GeneralLit, Constraint, Block, Rule, nil_constraint, cons_constraint, nil_var, cons_var, Vec, LetExpr, ConsList  # MARK: AND-split — added ConsList
 from .egg_rules import *
 from ..parsing.checker import SemanticChecker
+from ..transpile.ir import PrintedBlock
 
 
 # MARK: AND-split — custom cost model for extraction
@@ -100,36 +101,37 @@ class Rewriter:
                 print(f"Collected {len(self.aux_rules)} aux rules:")
                 for r in self.aux_rules:
                     print(f"  {r}")
-        
+
         if self.verbose:
             print("Finished Rewriting Program.")
         return program
 
-    def rewrite_block(self, block: nodes.Block, convert_only=False) -> nodes.Block:
+    def rewrite_block(self, block: nodes.Block, convert_only=False) -> PrintedBlock:
         """Rewrite a block at the constraint level.
-        
+
         Strategy:
         1. Convert rules directly (no egg rewriting needed for rules)
         2. Convert and rewrite each constraint individually through egg
            - Wrap as cons_constraint(phi, nil) for input
            - Output may be multiple constraints (cons_constraint chain)
-        3. Reconstruct the Block with all rewritten constraints
+        3. Hand the result to the transpiler as a ``PrintedBlock``: one
+           printed egglog term per rule and per constraint.  A single
+           ``Block(...)`` term nests one level per constraint, and egglog
+           can neither register such a chain past about 300 cells nor
+           print it in linear space, while Python's parser refuses it near
+           200 (docs/known-issues.md, B5).
         """
         try:
             # 1. Convert rules - they don't need egg rewriting
-            egg_rules = Set[Rule]()
-            for stmt in block.statements:
-                if isinstance(stmt, nodes.Rule):
-                    r = convert_rule(stmt)
-                    egg_rules = egg_rules | Set(r)
-            
+            egg_rules = [convert_rule(stmt) for stmt in block.statements if isinstance(stmt, nodes.Rule)]
+
             # 2. Convert and rewrite each constraint individually
             all_rewritten_constraints: list[Constraint] = []
             constraint_stmts = [s for s in block.statements if isinstance(s, nodes.SetConstraint)]
-            
+
             if self.verbose:
                 print(f"Block has {len(constraint_stmts)} constraints to rewrite")
-            
+
             # Combine entailment rewrites with equal_set
             eq_rules = equal_set if not self.entailment_ruleset else (equal_set | self.entailment_ruleset)
             extraction_rules = extraction if not self.entailment_ruleset else (extraction | self.entailment_ruleset)
@@ -158,14 +160,18 @@ class Rewriter:
                     all_rewritten_constraints.extend(rewritten_list)
                     if self.verbose and len(rewritten_list) > 1:
                         print(f"  -> Produced {len(rewritten_list)} constraints")
-            
-            # 3. Reconstruct Block
-            final_block = Block(egg_rules, all_rewritten_constraints)
-            
+
+            # 3. Print statement by statement for the transpiler
+            final_block = PrintedBlock(
+                rules=[str(r) for r in egg_rules],
+                constraints=[str(c) for c in all_rewritten_constraints],
+            )
+
             if self.verbose:
                 print("\nRewritten Block:")
-                print(final_block)
-            
+                for text in final_block.rules + final_block.constraints:
+                    print(text)
+
             return final_block
 
         except Exception as e:
@@ -173,7 +179,7 @@ class Rewriter:
                 print(f"Rewrite failed: {e}")
                 import traceback
                 traceback.print_exc()
-            return block
+            raise
     
     # MARK: AND-split — core splitting method
     def _split_constraints(self, constraints: list[Constraint]) -> list[Constraint]:
@@ -189,37 +195,36 @@ class Rewriter:
         distributivity, etc.) which would pollute e-classes and cause
         constraint merging via the idempotency rule.
 
+        Each constraint is split in its own e-graph.  The split rules only
+        ever look at one cons cell, so this is the same rewrite as splitting
+        the whole block at once, without the block-sized cons list that
+        egglog cannot register past about 300 cells (B5).
+
         Returns the list of individual (split) Constraints.
         """
-        egraph = EGraph()
-
-        # Build ConsList: cons(c1, cons(c2, ... nil))
-        cons_list: ConsList = nil_constraint()
-        for c in reversed(constraints):
-            cons_list = cons_constraint(c, cons_list)
-        egraph.register(cons_list)
-
         if self.verbose:
-            print(f"Splitting: registered {len(constraints)} constraints in ConsList")
+            print(f"Splitting: {len(constraints)} constraints, one e-graph each")
             t0 = time.perf_counter()
 
-        # Saturate with only split_set — deliberately NOT equal_set.
-        egraph.run(
-            run(split_set, scheduler=back_off()) * 15
-        )
+        split_result: list[Constraint] = []
+        for c in constraints:
+            egraph = EGraph()
+            cons_list: ConsList = cons_constraint(c, nil_constraint())
+            egraph.register(cons_list)
+
+            # Saturate with only split_set — deliberately NOT equal_set.
+            egraph.run(
+                run(split_set, scheduler=back_off()) * 15
+            )
+
+            # Extract with the custom cost model that penalises And
+            best = egraph.extract(cons_list, include_cost=True, cost_model=split_cost_model)
+            if isinstance(best, tuple):
+                best = best[0]
+            split_result.extend(self._extract_constraints_from_cons_list(best))
 
         if self.verbose:
-            print(f"  Splitting saturation: {time.perf_counter() - t0:.3f}s")
-
-        # Extract with the custom cost model that penalises And
-        best = egraph.extract(cons_list, include_cost=True, cost_model=split_cost_model)
-        if isinstance(best, tuple):
-            best = best[0]
-
-        split_result = self._extract_constraints_from_cons_list(best)
-
-        if self.verbose:
-            print(f"  Extracted {len(split_result)} constraints after splitting")
+            print(f"  Splitting: {time.perf_counter() - t0:.3f}s, {len(split_result)} constraints after splitting")
 
         return split_result
 
@@ -386,35 +391,28 @@ class Rewriter:
         return False
     
     def _extract_constraints_from_cons_list(self, cons_list) -> list[Constraint]:
-        """Extract all Constraints from a ConsList (cons_constraint chain)."""
-        constraints = []
+        """Extract all Constraints from a ConsList (cons_constraint chain).
+
+        Walks the term structurally with ``get_callable_args``; the chain is
+        never printed, so its length is not limited by the printer (B5).
+        """
+        # A printed chain (debugging) still goes through the string parser.
+        if isinstance(cons_list, str):
+            return self._parse_cons_list_str(cons_list)
+
+        constraints: list[Constraint] = []
         current = cons_list
-        
-        # Handle string representation (for debugging/fallback)
-        if isinstance(current, str):
-            return self._parse_cons_list_str(current)
-        
-        # Iterate through the cons_constraint chain
-        # ConsList is either nil_constraint() or cons_constraint(head, tail)
         while True:
-            current_str = str(current)
-            # Normalize first to handle bindings at the start
-            normalized_str = self._normalize_cons_list_str(current_str)
-            if normalized_str.startswith("nil_constraint"):
-                break
-            elif normalized_str.startswith("cons_constraint"):
-                # Extract head and tail from cons_constraint
-                # This is tricky with egglog objects - use string parsing as fallback
-                constraints_from_str = self._parse_cons_list_str(current_str)
-                return constraints_from_str
-            else:
-                # Unknown format
-                if self.verbose:
-                    print(f"Warning: Unknown cons_list format: {normalized_str[:100]}")
-                break
-        
-        return constraints
-    
+            args = get_callable_args(current, cons_constraint)
+            if args is not None:
+                head, tail = args
+                constraints.append(head)
+                current = tail
+                continue
+            if get_callable_args(current, nil_constraint) is not None:
+                return constraints
+            raise ValueError(f"Unknown cons_list form: {str(current)[:200]}")
+
     def _parse_cons_list_str(self, s: str) -> list[Constraint]:
         """Parse cons_constraint string into list of Constraint strings, then eval them."""
         constraints = []
