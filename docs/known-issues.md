@@ -16,6 +16,8 @@ Reproduce with `setlah tests/inputs/regressions/<file>.sl [facts.lp] --print-asp
 | [B5](#b5) | large models cannot be compiled at all | 1 | limitation | **fixed** |
 | [B6](#b6) | safety check rejects sound recursive and equality-bound rules | 1 | limitation | open |
 | [B7](#b7) | auxiliary predicate names wrap at five; two unrelated auxiliaries share a name | 0 | **wrong output, silent** | **fixed** |
+| [B8](#b8) | an existential with nine or more bound variables fails with `Unsupported VarList: ... subst_varlist` | 1 | crash | **fixed** |
+| [B9](#b9) | a PORTUS command compiles whole and cleanly and answers UNSAT where z3 answers SAT | 0 | **wrong output, silent** | open |
 
 Severity: *wrong output* means the compiler exits 0 and the emitted ASP does
 not faithfully encode the model, so a caller that trusts the exit code gets a
@@ -197,6 +199,23 @@ schedule makes monotone. The fallback also still exits 0.
 **Suggested fix for the rest.** Make the fallback a hard error, so
 incompleteness is visible; a caller can then decide. Emitting a comment
 where a constraint belongs is never safe, and `exit 0` on it is worse.
+
+---
+
+**Shape datapoint (2026-09-07, TPTP translator).** A universally quantified
+disjunction whose members are conjunctions of equalities is lowered only in
+the 2-by-2 case; every larger product falls back (exit 0, raw constraint):
+
+| file | shape | result |
+|---|---|---|
+| `or_of_and_2x2_ok.sl` | `(\or (\and e e) (\and e e))` under `\forall` over 4 variables | compiles, 8 rules |
+| `or_of_and_3x2_fallback.sl` | three disjuncts of two equalities | raw fallback |
+| (same generator) | 4x2, 2x4, 3x3 | raw fallback |
+
+The TPTP translator works around it by distributing small products (at most
+32 clauses) into CNF before emission; larger ones (ALG014+1 has 4x4) stay
+untranslatable and count as compile errors in that benchmark.
+
 
 ---
 
@@ -407,3 +426,72 @@ one process give the same text. Tests: `test_b7_*` in
 `tests/test_regressions_known_issues.py`; the semantic one compiles the
 reproducer in a fresh interpreter and checks the 128 intended answer sets,
 none of which picks node 7 (the unfixed compiler leaves 8).
+
+---
+
+## B8. Existential with nine or more bound variables fails with `Unsupported VarList` {#b8}
+
+Found 2026-09-07 by the TPTP benchmark in setlah-apps, whose translator
+flattens function terms and constants into fresh bound variables, so a ground
+equation over a few constants and two function applications yields an
+existential with ten binders.
+
+**Symptom.** Exit 1 with
+
+```
+compile error: Unsupported VarList: Call(func=Name(id='subst_varlist', ctx=Load()), args=[Call(func=...
+```
+
+**Reproducers.**
+
+| file | shape | result |
+|---|---|---|
+| `exists_binders8_ok.sl` | `(\exists F0..F7. (\and k0(F0) ... k7(F7) p(F0, F7)))`, each `k_i` a singleton choice | compiles |
+| `exists_binders9_varlist_crash.sl` | the same with nine binders | crash |
+
+The threshold is exactly nine bound variables (1 to 8 compile, 9 and 10
+crash). The universal-guard form of the same formula,
+`(\forall F0..Fn. (\impl (\and k0(F0) ...) p(F0, Fn)))`, does not crash but
+shows the [B2](#b2) non-monotonicity again: 2, 4, 6, 8 and 12 binders compile,
+9 and 10 fall back to the raw constraint (exit 0).
+
+**Mechanism (traced 2026-09-07).** Not the rewriting budget: the
+substitution rules had run, and the evaluated variable list sat in the same
+e-class as the `subst_varlist(...)` call that `exists_to_anonymous`
+introduces. `subst_varlist`, `subst_term` and `subst_formula` carried the
+default extraction cost, so from nine binders on the unevaluated call was
+the cheaper representative and the extractor printed it; the transpiler
+cannot read a substitution call as a variable list.
+
+**Fix** (commit `f756e4d`, branch `direct-lowering`). The three substitution
+functions cost 10000, so their result always wins extraction when it
+exists. Nine and ten binders compile; eight is unchanged; the B1, B2 and B3
+reproducers are unchanged. Test `test_b8_wide_existential_is_lowered`.
+
+**Impact.** Any model with an existential over nine or more variables. Not
+hit by the study's hand-written ports (widest existential there has four
+binders); hit by every function-heavy TPTP problem until the translator
+switched to the universal-guard form and started hoisting ground binders.
+
+## B9. A PORTUS command compiles whole and cleanly and answers UNSAT where z3 answers SAT {#b9}
+
+Found 2026-09-07 by the first whole-model run of the PORTUS sample after
+B5 (setlah-apps `ports/portus/auto-allcmds-trackA-partial.txt`, 35 commands
+of the first 12 models). Three commands of `litmustestgen/c11_perturbed`
+(cmd3, cmd4, cmd5) translate, compile with no raw fallback (about 1,540 ASP
+lines, 72 to 80 s) and Clingo answers UNSAT; z3 answers SAT on the captured
+query. `alloy/question` cmd1 and cmd2 do the same with one and four raw
+fallbacks stripped, which is impossible for a relaxation and so also points
+at wrong code. The same UNSAT comes from commit `b4c7661` (B7 and B5 only,
+whose output is byte-identical to `main` on everything `main` can compile),
+so the B2 schedule change did not cause it; these commands never compiled
+whole before, so it is a new verdict, not a changed one.
+
+**Reproducer.** `wrongverdict_p1_c11_perturbed_cmd3.{sl,lp}`: the
+translation as the study's translator (v8) wrote it, 2,095 lines, not
+minimised (each compile is about 70 s). An arity scan of the compiled
+program finds no predicate used with two arities, so it is not the [B4](#b4)
+signature as recorded. Whether the fault is the compiler's or the
+translator's is not yet established; a differential against the direct
+lowering (Track B) is the cheapest next step, since a second independent
+lowering that agrees with z3 would localise it.

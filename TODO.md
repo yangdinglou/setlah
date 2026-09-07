@@ -9,6 +9,23 @@ verification queries, Alloy commands translated by PORTUS) with the
 
 ## Correctness
 
+- **B9, wrong verdict on PORTUS commands that compile cleanly.** Three
+  `c11_perturbed` commands and two `alloy/question` commands answer UNSAT
+  where z3 answers SAT, on this branch and on `b4c7661` alike. Reproducer
+  `tests/inputs/regressions/wrongverdict_p1_c11_perturbed_cmd3.{sl,lp}`
+  (not minimised). Highest-severity open item together with B4; the
+  direct lowering is the cheapest way to localise it.
+- **B8, crash: an existential with nine or more bound variables.** Fixed
+  in `f756e4d` (the unevaluated `subst_varlist` call was the cheaper
+  extraction representative; the substitution functions now cost 10000).
+  Reproducers `tests/inputs/regressions/exists_binders{8_ok,9_varlist_crash}.sl`.
+- **B2, or-of-and shape.** A universal over three or more disjuncts of
+  conjunctions of equalities still falls back
+  (`or_of_and_3x2_fallback.sl`, strict xfail): the extracted term keeps the
+  body as a disjunction of conjunctions, and the equality budget does not
+  finish the distributivity into DNF. The direct lowering should not
+  distribute at all: a conjunction under negation inside a cube becomes an
+  auxiliary predicate.
 - **B7, wrong output: auxiliary names wrap at five.** Fixed in `fd5ca93`
   (one counter per compilation unit, `AuxNamer` threaded from the rewriter
   into the transpiler). Reproducer
