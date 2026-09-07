@@ -13,7 +13,7 @@ Reproduce with `setlah tests/inputs/regressions/<file>.sl [facts.lp] --print-asp
 | [B2](#b2) | `:- % raw-constraint ...` in the output | 0 | wrong output | open |
 | [B3](#b3) | unsafe auxiliary rule; Clingo rejects the program | 0 | wrong output | **fixed** |
 | [B4](#b4) | a body atom loses its arguments | 0 | wrong output | open |
-| [B5](#b5) | large models cannot be compiled at all | 1 | limitation | open |
+| [B5](#b5) | large models cannot be compiled at all | 1 | limitation | **fixed** |
 | [B6](#b6) | safety check rejects sound recursive and equality-bound rules | 1 | limitation | open |
 | [B7](#b7) | auxiliary predicate names wrap at five; two unrelated auxiliaries share a name | 0 | **wrong output, silent** | **fixed** |
 
@@ -226,9 +226,44 @@ parentheses) is reached instead. Both are the same design fact: a model of
 more than roughly 250 statements after the compiler's own conjunction
 splitting cannot be compiled whole.
 
-**Workaround.** Compile declarations once and constraints in slices, then
-concatenate the ASP; sound because a program is the union of its rules and
-constraints.
+**Mechanism, precisely** (traced 2026-09-07). The block travelled from the
+rewriter to the transpiler as one printed `Block(...)` whose constraint list
+is a right-nested `cons_constraint` chain, one nesting level per statement;
+`transpile/pipeline.py` parsed that text with `ast.parse`, and CPython's
+tokenizer refuses more than 200 nested parentheses. The same chain also
+failed on the rewriter's side, earlier still: egglog's Python bindings
+recurse when registering it (`RecursionError` near 300 cells) and print it
+in quadratic space (1.3 MB at 200 statements, which is where most of the
+20 s compile of a 190-statement model went). On `main` the rewriter caught
+that error and returned the unrewritten source block, so it surfaced later
+as a `SyntaxError` on SetLaH-looking text.
+
+**Fix** (commit `b4c7661`, branch `direct-lowering`). No block-sized cons
+list anywhere. The rewriter splits each constraint in its own e-graph (the
+split rules only look at one cons cell), walks the extracted chain with
+`get_callable_args` instead of printing and re-parsing it, and returns a
+`PrintedBlock` (`transpile/ir.py`): one printed term per rule and per
+constraint. `transpile_printed_block_to_asp` normalizes, parses and lowers
+each statement on its own; `_normalize_printed_item` handles egglog's
+let-bindings in both layouts. The old whole-block string entry point stays
+for callers that hold a `Block` string. `rewrite_block` re-raises instead
+of returning the source block. Checked by byte-identical ASP on 52 of 55
+local models (the other three differ only in egglog's set-iteration order,
+which also differs between two runs of the same compiler), and by the scale
+harness:
+
+| statements | before | after |
+|---|---|---|
+| 192 (constraints only) | `)` syntax error at 21 s | 19.7 s |
+| 302 / 502 (constraints only) | not reached | 29.9 s / 47.8 s |
+| 455 / 602 / 902 (mixed) | `)` syntax error at 302 | 19.2 s / 25.7 s / 38.2 s |
+
+Compile time stays linear at about 0.1 s per constraint; the remaining
+per-statement cost is egglog saturation, not the round trip.
+
+**Workaround (no longer needed).** Compile declarations once and constraints
+in slices, then concatenate the ASP; sound because a program is the union of
+its rules and constraints.
 
 ---
 

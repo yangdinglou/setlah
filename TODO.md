@@ -45,14 +45,23 @@ verification queries, Alloy commands translated by PORTUS) with the
 ## Architecture
 
 - **Retire the printed-term round trip.** The rewriter serialises egglog's
-  extracted expression to text and reads it back with `eval` (2 sites),
-  `ast.parse` (6 sites) and regular expressions over the printed term (27 in
-  `rw.py` and `transpile/`). It caused B1, it imposes both size caps of B5
-  (the C-level recursion limit in the printer on Python 3.12, the parser's
-  parenthesis limit on 3.11: roughly 250 statements after splitting), and it
-  costs about 1.1 s of a 7.4 s compile. egglog's Python API can return
-  structured expressions; the transpiler should consume those, or the
-  compiler's own IR, never text.
+  extracted expression to text and reads it back with `eval`, `ast.parse`
+  and regular expressions over the printed term (`rw.py` and `transpile/`).
+  It caused B1 and it costs about 1.1 s of a 7.4 s compile. The block-level
+  half is gone since `b4c7661` (B5): the rewriter walks cons lists with
+  `get_callable_args` and hands the transpiler one printed term per
+  statement, so no size cap depends on the statement count any more. The
+  per-constraint half remains: `_rewrite_single_constraint` still prints
+  each extracted constraint, rewrites `AuxCall`s textually and `eval`s the
+  result. egglog's Python API can return structured expressions; the
+  transpiler should consume those, or the compiler's own IR, never text.
+- **Output is not deterministic across runs.** The same model compiled twice
+  by the same compiler can differ in the order of an auxiliary predicate's
+  cube rules and in the element order of printed `Set[Term]`s (seen
+  2026-09-07 on `raw_f1_frame_axiom.sl` and the limits model `flat08.sl`,
+  three runs, two or three distinct outputs). Semantically equal so far, but
+  it defeats byte-level differential testing and could mask a real change.
+  Likely egglog set iteration order; pin it or sort before printing.
 - **One saturation per block, not per constraint.** Profiling a 31-constraint
   DuoAI query: 7.4 s total, of which rewriting 5.8 s across 38 per-constraint
   egglog saturations (egglog internals 3.8 s). Reusing the e-graph, or
