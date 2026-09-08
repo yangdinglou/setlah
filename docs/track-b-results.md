@@ -76,7 +76,7 @@ mixed): every enumerable model agrees exactly.
 | domain | result |
 |---|---|
 | DuoAI, n=3 | 142/142 agree (137 UNSAT, 5 SAT), unchanged |
-| mypyvy | (running; 131 of 792 done, all agreeing, at the time of writing) |
+| mypyvy | 792/792 agree (536 UNSAT, 256 SAT), unchanged (compile mean 9.2 s on a machine shared with three other runs) |
 
 ## What the direct lowering does that egglog did not
 
@@ -89,6 +89,7 @@ mixed): every enumerable model agrees exactly.
 | the author's recursion datapoint (`recursion_ground_guards_or_of_and`) | recursion depth exceeded | compiles in 2.4 s (the program itself is ungroundable at any size: 610-literal constraints) |
 | the author's B3 datapoint (`unsafe_aux_negated_existential_tptp`, TPTP NLP037+1) | unsafe auxiliary heads, Clingo refuses to ground, exit 0 | compiles and grounds (auxiliary variables get their domain guards in the lowering) |
 | B9 (`wrongverdict_p1_*`) | UNSAT vs z3 SAT | UNSAT as well: not in the replaced half |
+| B4 (`wrongcode_d1_*`) | compiles; Clingo exceeds 40 min on its facts | compiles; the same, so no differential signal |
 
 ## Cost
 
