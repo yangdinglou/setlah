@@ -18,6 +18,9 @@ Reproduce with `setlah tests/inputs/regressions/<file>.sl [facts.lp] --print-asp
 | [B7](#b7) | auxiliary predicate names wrap at five; two unrelated auxiliaries share a name | 0 | **wrong output, silent** | **fixed** |
 | [B8](#b8) | an existential with nine or more bound variables fails with `Unsupported VarList: ... subst_varlist` | 1 | crash | **fixed** |
 | [B9](#b9) | a PORTUS command compiles whole and cleanly and answers UNSAT where z3 answers SAT | 0 | **wrong output, silent** | open |
+| [B10](#b10) | one symmetric uniqueness pair in a block turns every `not X = Y` of the block into `X < Y` | 0 | **wrong output, silent** | **fixed** |
+| [B11](#b11) | an auxiliary rule with the body `?`: the program does not parse | 0 | wrong output | open (egglog path); direct lowering unaffected |
+| [B12](#b12) | universals that occur in no literal end up as unbound `#count` element variables | 0 | wrong output | open (egglog path); direct lowering unaffected |
 
 Severity: *wrong output* means the compiler exits 0 and the emitted ASP does
 not faithfully encode the model, so a caller that trusts the exit code gets a
@@ -257,6 +260,23 @@ B1: with B1 fixed alone, 41 of the first 62 queries produced a program
 Clingo refused to ground; with both fixed, all 792 compile, ground and
 agree with Z3.
 
+**Datapoint (2026-09-07, TPTP FNT run, NLP037+1).** A different unsafe
+shape from the vacuous-cube one: a source formula with alternating
+quantifiers under negation, `forall U. sk(U) -> exists V, W. (table(U,V) and
+forall X. (not member(U,X,W) or exists Y. (... forall Z. (... exists X1.
+...))))`, compiles (exit 0) to an auxiliary chain in which two heads carry
+variables that occur only in negated body literals:
+
+```
+__aux_4(U,V,X) :- dom_U(Y), not __aux_3(U,Y,V,X), p_s_three(U,Y), p_s_group(U,Y), not __aux_1(U,Y).
+__aux_5(U,W,V) :- dom_U(X), p_s_member(U,X,W), not __aux_4(U,V,X).
+```
+
+Clingo rejects the program (`V`, `X` unsafe). Reproducer
+`unsafe_aux_negated_existential_tptp.sl` (41 predicates, one constraint);
+5 of the 64 NLP problems in the FNT sample fail this way (`GERR`).
+
+
 ---
 
 ## B4. A body atom loses its arguments, exit 0 {#b4}
@@ -339,6 +359,17 @@ per-statement cost is egglog saturation, not the round trip.
 **Workaround (no longer needed).** Compile declarations once and constraints
 in slices, then concatenate the ASP; sound because a program is the union of
 its rules and constraints.
+
+---
+
+**Single-statement datapoint (2026-09-07, TPTP translator).**
+`recursion_ground_guards_or_of_and.sl` (one constraint over a 5-constant,
+2-function signature: two nested universal guard blocks of 6 and 2 binders
+around a 4-by-4 disjunction of conjunctions of equalities) fails with
+`compile error: maximum recursion depth exceeded` on its own, so the
+recursion limit is reachable by one statement's shape, not only by
+statement count.
+
 
 ---
 
@@ -495,3 +526,134 @@ signature as recorded. Whether the fault is the compiler's or the
 translator's is not yet established; a differential against the direct
 lowering (Track B) is the cheapest next step, since a second independent
 lowering that agrees with z3 would localise it.
+
+---
+
+## B10. Symmetry breaking applied block-wide, exit 0 {#b10}
+
+Found 2026-09-07 by the differential between the two lowerings on
+`raw_f0_ite_frame_equality.sl`: the direct lowering's output carried
+`V < K` where the source says `V != K`.
+
+**Mechanism.** `transpile/merge.py:_apply_symmetry_breaking` rewrites
+`not X = Y` to `X < Y`, which is sound only for a constraint symmetric in
+`X` and `Y` (every violation with `X > Y` has a mirror image). The
+condition it checked was block-wide: as soon as *any* count-convertible
+core in the block had two constraints (an existence/uniqueness pair such as
+a singleton witness `k`), every `not X = Y` in every integrity constraint
+of the block was rewritten. On the egglog path most inequalities of
+non-symmetric constraints lived in auxiliary rules, which the pass does
+not touch, so it rarely showed; the direct lowering puts them in the
+integrity constraint itself.
+
+**Reproducers.** `wrongcode_b10_symmetry_breaking.sl` with
+`wrongcode_b10.lp`: a singleton `k` plus
+`forall X, Y. p(X) and q(Y) and X != Y -> r(X, Y)`. Both lowerings emitted
+`:- p(X), q(Y), X < Y, not r(X, Y).` and with `p(2), q(1)` half the answer
+sets lacked `r(2, 1)`. The author found the same defect the same day from
+the TPTP translator as an equality consequent, `guards -> (= C A)` lowered
+to `:- guards, C < A.`: `wrongcode_eq_consequent_lt.{sl,lp}`,
+`wrongcode_eq_consequent_lt_min.sl` (13 lines) and
+`wrongcode_eq_consequent_lt_ok_no_collapse.sl` (the same without the
+singleton, which compiled correctly because no symmetric core was present).
+
+**Fix** (branch `direct-lowering`). The check is now local: an inequality
+is rewritten only if swapping its two variables in the other literals of
+that constraint gives the same multiset of literals. The intended
+uniqueness constraints (`pred(.., X, ..), pred(.., Y, ..), not X = Y`)
+still qualify; unrelated ones keep `not X = Y`.
+
+### TPTP-side reproducers and bisect (setlah-apps, 2026-09-07)
+
+
+Found 2026-09-07 by the TPTP benchmark: five Theorem problems came back
+`Satisfiable` from whole-model compiles with no raw fallback, and
+`ports/tptp/check_model.py` (setlah-apps) showed the clingo models violate
+34 of ALG020+1's 132 constraints.
+
+Found independently the same day by the TPTP benchmark, before this entry
+existed; kept here as additional reproducers.
+
+**Symptom.** Exit 0; the constraint
+
+```
+(\forall A, B, C. (\impl (\and k(A) f(A, B) g(B, C)) (= C A))).
+```
+
+is emitted as
+
+```
+:- k(A), f(A, B), g(B, C), C < A.
+```
+
+which forbids only half of the violating assignments (`C > A` passes).
+Writing `(= A C)` gives `A < C` instead. The correct lowering is
+`:- k(A), f(A, B), g(B, C), not C = A.` (or `C != A`).
+
+**Reproducer.** `wrongcode_eq_consequent_lt.sl` with
+`wrongcode_eq_consequent_lt.lp` (`dom_U(1..3).`): `k` a singleton choice,
+`f`, `g` total functional choices (the compiler collapses their totality and
+functionality into `1{...}1`, correctly), plus the constraint above. The
+compiled program has models with `g(f(k)) != k`.
+
+**Context dependence.** The same constraint shape taken alone from
+ALG020+1 (`k_s_e20(F419), f_s_j(F419, F420), f_s_h(F420, F421) -> F421 =
+F419`) compiles correctly to `not F421 = F419`, while inside the 146-statement
+model the emitted program accepts models violating it; so the wrong
+rewrite depends on what else is in the model or on the rewriting budget.
+
+**Trigger (bisected).** The wrong lowering appears exactly when the model
+also contains an existence-plus-uniqueness pair for some predicate, the
+pair the compiler collapses into `1{p(X) : dom_U(X)}1`:
+
+| statements present besides the chain constraint | lowering |
+|---|---|
+| `k` existence + `k` uniqueness (`wrongcode_eq_consequent_lt_min.sl`) | `C < A` (wrong) |
+| `f` totality + `f` functionality | `C < A` (wrong) |
+| `f`, `g` totality only (`wrongcode_eq_consequent_ok_no_collapse.sl`) | `not C = A` |
+| `f`, `g` functionality only | `not C = A` |
+| `k` uniqueness only, with `k` a plain choice | `not C = A` |
+
+So the collapsing rewrite (existence + uniqueness to a cardinality rule)
+leaks into an unrelated equality consequent in the same model.
+
+**Mechanism (not traced).** Something rewrites `not (= X Y)` into `X < Y`,
+which is only sound as a symmetry-breaking step for a symmetric constraint;
+here it is applied to an asymmetric one.
+
+**Impact.** Any equality in a consequent that the collapsing patterns
+(uniqueness of a singleton, functionality of a graph) do not absorb. The
+study's TPTP verdicts are gated on an independent model check until this
+is fixed; the concurrency and EPR ports need re-auditing for the shape.
+
+---
+## B11. Auxiliary rule with the body `?`, exit 0 {#b11}
+
+Found 2026-09-07 by the same differential on the limits model `flat13`
+(`wrongcode_v13_aux_body_question_mark.sl`): the egglog path emits
+
+```
+__aux_1(V0, V1, V2, V3, V4, V5, V6, V7, V8, V11) :- ?.
+```
+
+The rewriter renders auxiliary rule bodies with its own string printer
+(`rewrite/rw.py`, around lines 897 to 942), which returns `"?"` for any
+literal shape it does not know instead of failing; a cube it could not
+print becomes a rule Clingo rejects with a syntax error, and the compiler
+exits 0. The limits harness reported this model as "ok" because it only
+looks for the raw-constraint comment. The direct lowering compiles the
+model correctly (checked by answer sets against generated instances).
+
+## B12. Vacuous universals become unbound aggregate variables, exit 0 {#b12}
+
+Found 2026-09-07 by the same differential on the limits model `w_v6_c2`
+(`unsafe_w6c2_vacuous_universals.sl`): a universal over six variables of
+which four occur in no literal. The egglog path emits
+
+```
+:- dom_D(X0), dom_D(X1), #count{X2,X3,X4,X5 : q0(X0, X1), ...} != 0.
+```
+
+and Clingo refuses to ground it (`X2` to `X5` unsafe); exit 0. The direct
+lowering drops the vacuous binders (sorts are assumed non-empty) and
+compiles the model correctly.

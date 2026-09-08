@@ -4,7 +4,36 @@ All notable changes to SetLaH will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- A second front half, `--lowering direct` (`src/setlah/lowering/`): a
+  syntax-directed lowering of SetLaH to the transpiler's IR without egglog.
+  Same back half, same output on every model both compile (checked by
+  answer-set and sampled equivalence on the local models and by the
+  corpus runners), about 0.3 s per model against 1 to 4 s, and it handles
+  the shapes the egglog path could not (ite-valued frame equalities,
+  disjunctions of conjunctions, deep nesting, wide existentials). The
+  default stays `egglog`; `SETLAH_LOWERING=direct` selects it for drivers
+  that call `setlah` unchanged. See `docs/track-a-results.md` and
+  `docs/known-issues.md`.
+
 ### Fixed
+
+- Auxiliary predicate names no longer wrap: one counter per compilation
+  unit, shared by the rewriter and the transpiler (B7).
+- Models are no longer limited to about 200 statements: the rewriter hands
+  the transpiler one printed term per statement instead of one block
+  expression, and never registers a block-sized cons list (B5).
+- The raw-constraint fallback no longer fires on flat antecedents over 8
+  or 11 variables or on nested universals from depth 7: `grouped_forall`
+  has a consumer rule, the extraction schedule resets its back-off between
+  runs, the aux round repeats until the term is lowered, and the recursion
+  cap is 64 (B2, harness shapes).
+- An existential over nine or more variables no longer crashes with
+  `Unsupported VarList: subst_varlist(...)` (B8).
+- Symmetry breaking (`not X = Y` to `X < Y`) applies only to constraints
+  that are symmetric in the two variables, not to every inequality in a
+  block that holds one symmetric pair (B10, wrong output).
 
 - Lower auxiliary-predicate calls that the rewriter's recursive pass leaves in
   place, instead of failing with `Expected Literal(atom, sign), got

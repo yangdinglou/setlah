@@ -53,3 +53,12 @@ class PrintedBlock:
 
     rules: list[str]
     constraints: list[str]
+
+
+@dataclass(frozen=True)
+class LoweredBlock:
+    """A block already in IR, as the direct lowering (``setlah.lowering``)
+    produces it: no printed terms, the kept passes take it as is."""
+
+    rules: list[IRRule]
+    constraints: list[IRConstraint]

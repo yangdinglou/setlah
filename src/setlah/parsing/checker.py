@@ -527,3 +527,47 @@ def check_program(program: nodes.Program) -> bool:
     checker = SemanticChecker()
     return checker.check_program(program) 
 
+
+# =============================================================================
+# Exports for the compilation back half (shared by both lowerings)
+# =============================================================================
+
+
+def export_entailment_specs(checker: "SemanticChecker") -> Dict[str, List[Tuple[str, Tuple[int, ...]]]]:
+    """Entailments as (pred -> [(entailed_pred, head-arg positions)]).
+
+    Only entailments whose entailed atom arguments are direct head variables
+    (no constants or expressions) are exported; that is enough to drop
+    redundant domain facts such as ``l_qubit(L)`` next to ``m(_, L, _)``.
+    """
+    specs: Dict[str, List[Tuple[str, Tuple[int, ...]]]] = {}
+    for pred_name, pred_info in checker.predicates.items():
+        if pred_info.is_external or not pred_info.entailments:
+            continue
+        for ent in pred_info.entailments:
+            entailed_pred = ent.body_atom.predicate.name
+            positions: List[int] = []
+            ok = True
+            for arg in ent.body_atom.args:
+                if isinstance(arg, nodes.Variable) and arg.name in ent.var_mapping:
+                    positions.append(ent.var_mapping[arg.name])
+                else:
+                    ok = False
+                    break
+            if not ok:
+                continue
+            tup = (entailed_pred, tuple(positions))
+            if tup not in specs.get(pred_name, []):
+                specs.setdefault(pred_name, []).append(tup)
+    return specs
+
+
+def export_pred_arg_types(checker: "SemanticChecker") -> Dict[str, Tuple[str, ...]]:
+    """Predicate argument domain names, e.g. {"greek": ("Index", "Index", "Index")}."""
+    out: Dict[str, Tuple[str, ...]] = {}
+    for name, info in checker.predicates.items():
+        try:
+            out[name] = tuple(info.arg_types)
+        except Exception:
+            continue
+    return out

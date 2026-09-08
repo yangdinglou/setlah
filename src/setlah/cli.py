@@ -1,4 +1,5 @@
 import argparse
+import os
 import time
 
 import contextlib
@@ -6,7 +7,6 @@ import io
 
 from setlah import __version__
 from setlah.parsing.parser import Parser
-from setlah.rewrite.rw import Rewriter
 from setlah.transpile import transpile_program_to_asp, transpile_program_to_clingo, run_clingo_ast
 
 def main(argv: list[str] | None = None) -> int:
@@ -38,6 +38,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Apply all safe post-processing ground/aggregate rewrites (otherwise only when mergeable)",
     )
     ap.add_argument("--clingo-arg", action="append", default=[], help="Extra argument passed to clingo (repeatable)")
+    ap.add_argument(
+        "--lowering",
+        choices=["egglog", "direct"],
+        default=os.environ.get("SETLAH_LOWERING", "egglog"),
+        help="Front half: equality saturation in egglog (default) or the direct syntax-directed lowering; "
+        "the default can be set with the SETLAH_LOWERING environment variable",
+    )
     args = ap.parse_args(argv)
 
     with open(args.input, "r", encoding="utf-8") as f:
@@ -60,7 +67,13 @@ def main(argv: list[str] | None = None) -> int:
         print("REWRITING")
         print("=" * 60)
         t0 = time.perf_counter()
-    rw = Rewriter(
+    # Import the selected front half only: the egglog import alone costs
+    # about 0.4 s, which the direct lowering does not need.
+    if args.lowering == "direct":
+        from setlah.lowering import DirectLowerer as front
+    else:
+        from setlah.rewrite.rw import Rewriter as front
+    rw = front(
         verbose=args.verbose,
         entailment_elim=args.entailment_elim,
         enable_cost_conversion=args.cost_conversion,

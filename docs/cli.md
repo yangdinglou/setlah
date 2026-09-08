@@ -42,6 +42,7 @@ setlah examples/choose.sl examples/choose.lp \
 | `--entailment-elim {asp,egg,both,none}` | Select where entailment-based literal elimination runs; the default is `asp`. |
 | `--verbose` | Print compiler phases and timing. |
 | `--clingo-arg ARG` | Forward one argument to Clingo; repeat for multiple arguments. |
+| `--lowering {egglog,direct}` | Select the front half: `egglog` (default) rewrites by equality saturation; `direct` is the syntax-directed lowering in `setlah.lowering`, which produces the same IR for the same back half without an e-graph or a printed-term round trip. The default can be set with the `SETLAH_LOWERING` environment variable, so drivers that call `setlah` unchanged can select a backend. |
 
 ## Input Facts
 

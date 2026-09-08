@@ -15,6 +15,8 @@ verification queries, Alloy commands translated by PORTUS) with the
   `tests/inputs/regressions/wrongverdict_p1_c11_perturbed_cmd3.{sl,lp}`
   (not minimised). Highest-severity open item together with B4; the
   direct lowering is the cheapest way to localise it.
+- **B10 (TPTP-side): an equality consequent `guards -> (= C A)` lowers to `:- guards, C < A.` next to a collapsed existence+uniqueness pair.** Same mechanism as `wrongcode_b10_symmetry_breaking.sl`; TPTP reproducers `tests/inputs/regressions/wrongcode_eq_consequent_lt{,_min,_ok_no_collapse}.sl`; see `docs/known-issues.md#b10`.
+- **B3 datapoint (TPTP): unsafe auxiliary heads from alternating quantifiers under negation** (`unsafe_aux_negated_existential_tptp.sl`, NLP037+1; 5 of 64 NLP problems in the FNT sample). See `docs/known-issues.md#b3`.
 - **B8, crash: an existential with nine or more bound variables.** Fixed
   in `f756e4d` (the unevaluated `subst_varlist` call was the cheaper
   extraction representative; the substitution functions now cost 10000).

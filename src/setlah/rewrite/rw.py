@@ -5,7 +5,7 @@ from ..ast import nodes as nodes
 from .converter import convert_block, convert_constraint, convert_rule, to_egg, set_pred_signatures
 from .egg_schema import Term, Atom, Literal, Formula, GeneralLit, Constraint, Block, Rule, nil_constraint, cons_constraint, nil_var, cons_var, Vec, LetExpr, ConsList  # MARK: AND-split — added ConsList
 from .egg_rules import *
-from ..parsing.checker import SemanticChecker
+from ..parsing.checker import SemanticChecker, export_entailment_specs, export_pred_arg_types
 from ..transpile.ir import PrintedBlock
 
 
@@ -1089,54 +1089,14 @@ class Rewriter:
         return None
 
     def _export_entailment_specs(self) -> dict[str, list[tuple[str, tuple[int, ...]]]]:
-        """Export entailments as a simple (pred -> entailed_pred + head-arg positions).
-
-        We only export entailments whose entailed atom arguments are *direct* head
-        variables (no constants / expressions). This is sufficient for removing
-        redundant domain facts like `l_qubit(L)` when `m(_, L, _)` appears.
-        """
-        specs: dict[str, list[tuple[str, tuple[int, ...]]]] = {}
+        """Entailments for the transpiler (see ``parsing.checker.export_entailment_specs``)."""
         if not self.checker:
-            return specs
-
-        for pred_name, pred_info in self.checker.predicates.items():
-            if pred_info.is_external or not pred_info.entailments:
-                continue
-
-            for ent in pred_info.entailments:
-                entailed_pred = ent.body_atom.predicate.name
-                positions: list[int] = []
-                ok = True
-
-                for arg in ent.body_atom.args:
-                    if isinstance(arg, nodes.Variable) and arg.name in ent.var_mapping:
-                        positions.append(ent.var_mapping[arg.name])
-                    else:
-                        ok = False
-                        break
-
-                if not ok:
-                    continue
-
-                tup = (entailed_pred, tuple(positions))
-                if tup not in specs.get(pred_name, []):
-                    specs.setdefault(pred_name, []).append(tup)
-
-        return specs
+            return {}
+        return export_entailment_specs(self.checker)
 
     def _export_pred_arg_types(self) -> dict[str, tuple[str, ...]]:
-        """Export predicate argument domain names as a lightweight mapping.
-
-        Example: {"greek": ("Index","Index","Index"), "dom_Index": ("Index",)}
-        """
-        out: dict[str, tuple[str, ...]] = {}
+        """Predicate argument domains (see ``parsing.checker.export_pred_arg_types``)."""
         if not self.checker:
-            return out
-        for name, info in self.checker.predicates.items():
-            try:
-                out[name] = tuple(info.arg_types)
-            except Exception:
-                continue
-        return out
-        
-    
+            return {}
+        return export_pred_arg_types(self.checker)
+

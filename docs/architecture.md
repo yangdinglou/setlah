@@ -7,10 +7,10 @@
     | parsing (Lark)
     v
 SetLaH AST
-    | rewriting (egglog)
+    | front half: rewriting (egglog, default) or direct lowering (--lowering direct)
     v
-normalised block expression
-    | transpilation and post-processing
+IR: rules and constraints (IRRule / IRConstraint), auxiliary rules
+    | transpilation and post-processing (shared by both front halves)
     v
 Clingo ASP
     | solving (optional)
@@ -18,9 +18,15 @@ Clingo ASP
 answer sets
 ```
 
-Equality-saturation rewrites lower first-order and set constructs, introduce
-auxiliary predicates, and split conjunctions into integrity constraints. The
-transpiler then renders ASP and applies safety and simplification passes.
+The egglog front half lowers first-order and set constructs by equality
+saturation, introduces auxiliary predicates and splits conjunctions into
+integrity constraints; it hands the transpiler one printed egglog term per
+statement (`PrintedBlock`). The direct front half (`src/setlah/lowering/`)
+does the same lowering syntax-directed: negation normal form, one integrity
+constraint per DNF cube of a constraint's violation, auxiliary predicates
+for quantified subformulas, projected count aggregates rendered directly;
+it hands the transpiler IR nodes (`LoweredBlock`). The transpiler then
+renders ASP and applies safety and simplification passes on either input.
 
 ## Source Layout
 
@@ -29,6 +35,7 @@ src/setlah/
 |-- ast/          AST dataclasses
 |-- parsing/      grammar, parser, transformer, and semantic checker
 |-- rewrite/      egglog schema, rewrite rules, and AST conversion
+|-- lowering/     direct syntax-directed lowering to the transpiler IR
 `-- transpile/    ASP IR, lowering, safety, rendering, and Clingo execution
 ```
 
@@ -36,6 +43,7 @@ Important entry points are:
 
 - `src/setlah/cli.py` for the command-line interface.
 - `src/setlah/rewrite/rw.py` for e-graph orchestration.
+- `src/setlah/lowering/lower.py` for the direct lowering.
 - `src/setlah/transpile/api.py` for public transpilation and execution helpers.
 - `src/setlah/transpile/pipeline.py` for ASP post-processing phases.
 
