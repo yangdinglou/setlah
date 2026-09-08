@@ -1,7 +1,8 @@
 # Proposal: retire the egglog front half
 
-Status: proposal, 2026-09-08, branch `direct-lowering`. Nothing here has been
-performed; the egglog path is still the default and untouched.
+Status: step 1 performed 2026-09-09 on the author's decision ("egglog can go
+as deprecated"): `direct` is the default of `--lowering`, `egglog` stays
+selectable with a deprecation warning. Steps 2 to 4 are not performed.
 
 ## What the data says
 

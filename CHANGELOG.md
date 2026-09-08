@@ -12,10 +12,18 @@ All notable changes to SetLaH will be documented in this file.
   answer-set and sampled equivalence on the local models and by the
   corpus runners), about 0.3 s per model against 1 to 4 s, and it handles
   the shapes the egglog path could not (ite-valued frame equalities,
-  disjunctions of conjunctions, deep nesting, wide existentials). The
-  default stays `egglog`; `SETLAH_LOWERING=direct` selects it for drivers
-  that call `setlah` unchanged. See `docs/track-a-results.md` and
-  `docs/known-issues.md`.
+  disjunctions of conjunctions, deep nesting, wide existentials). It is
+  the default; `--lowering egglog` (or `SETLAH_LOWERING=egglog`) selects
+  the previous front half, which is deprecated and will be removed in a
+  later release. See `docs/track-b-results.md`,
+  `docs/retire-egglog-proposal.md` and `docs/known-issues.md`.
+
+### Deprecated
+
+- The egglog front half (`--lowering egglog`, `src/setlah/rewrite/`,
+  `transpile/egg_parsing.py`, `transpile/aux.py`, `transpile/normalize.py`
+  and the string half of `transpile/pipeline.py`). The CLI prints a warning
+  when it is selected.
 
 ### Fixed
 

@@ -100,7 +100,7 @@ pytest
 - The Python API is provisional and may change before version 1.0.
 - Models under `examples/maple/` use an experimental shorthand. Use the
   equivalent `examples/maple-set/` models for direct execution.
-- This prerelease is tested with egglog 12.x and Clingo 5.8.0.
+- This prerelease is tested with Clingo 5.8.0. The default front half is the direct lowering; the deprecated egglog front half (`--lowering egglog`) is tested with egglog 12.x.
 
 ## License
 

@@ -7,7 +7,7 @@
     | parsing (Lark)
     v
 SetLaH AST
-    | front half: rewriting (egglog, default) or direct lowering (--lowering direct)
+    | front half: direct lowering (default) or rewriting (egglog, deprecated, --lowering egglog)
     v
 IR: rules and constraints (IRRule / IRConstraint), auxiliary rules
     | transpilation and post-processing (shared by both front halves)
@@ -18,8 +18,8 @@ Clingo ASP
 answer sets
 ```
 
-The egglog front half lowers first-order and set constructs by equality
-saturation, introduces auxiliary predicates and splits conjunctions into
+The egglog front half (deprecated) lowers first-order and set constructs by
+equality saturation, introduces auxiliary predicates and splits conjunctions into
 integrity constraints; it hands the transpiler one printed egglog term per
 statement (`PrintedBlock`). The direct front half (`src/setlah/lowering/`)
 does the same lowering syntax-directed: negation normal form, one integrity

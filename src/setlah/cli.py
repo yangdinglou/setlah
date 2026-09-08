@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 import time
 
 import contextlib
@@ -40,10 +41,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--clingo-arg", action="append", default=[], help="Extra argument passed to clingo (repeatable)")
     ap.add_argument(
         "--lowering",
-        choices=["egglog", "direct"],
-        default=os.environ.get("SETLAH_LOWERING", "egglog"),
-        help="Front half: equality saturation in egglog (default) or the direct syntax-directed lowering; "
-        "the default can be set with the SETLAH_LOWERING environment variable",
+        choices=["direct", "egglog"],
+        default=os.environ.get("SETLAH_LOWERING", "direct"),
+        help="Front half: the direct syntax-directed lowering (default) or the deprecated equality-saturation "
+        "rewriting in egglog; the default can be set with the SETLAH_LOWERING environment variable",
     )
     args = ap.parse_args(argv)
 
@@ -72,6 +73,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.lowering == "direct":
         from setlah.lowering import DirectLowerer as front
     else:
+        print(
+            "warning: --lowering egglog is deprecated and will be removed in a later release; "
+            "the direct lowering is the default (docs/retire-egglog-proposal.md)",
+            file=sys.stderr,
+        )
         from setlah.rewrite.rw import Rewriter as front
     rw = front(
         verbose=args.verbose,
