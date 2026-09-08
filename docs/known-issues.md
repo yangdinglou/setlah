@@ -527,6 +527,16 @@ translator's is not yet established; a differential against the direct
 lowering (Track B) is the cheapest next step, since a second independent
 lowering that agrees with z3 would localise it.
 
+**Datapoint (2026-09-08, direct lowering, setlah-apps Portus runner).** With
+`--lowering direct` the 12-command sample compiles whole (no fallback, 3 to
+105 s where the egglog path needed minutes to 40 minutes or timed out).
+`alloy/question` cmd1 still answers UNSAT in 3.7 s where z3 answers SAT,
+with 0 raw constraints, so the wrong verdict is not a relaxation and
+survives the new front half: either the translation or a shared back-half
+pass. `litmustestgen/c11_perturbed` cmd1 agrees on this run (UNSAT, z3
+UNSAT). Rows: `ports/portus/auto-sample12-direct.csv` in setlah-apps.
+
+
 ---
 
 ## B10. Symmetry breaking applied block-wide, exit 0 {#b10}

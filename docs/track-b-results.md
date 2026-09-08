@@ -17,7 +17,7 @@ times are indicative. Track A's numbers are in `docs/track-a-results.md`.
 | RVWMO (1,000-list) | 948 + 2 known + 4 | **948 agree, the same 2, 4 untranslated** | |
 | Armv8 (1,000-list) | 640 / 0 / 342 | **640 / 0 / 342** | |
 | VCh-rf shared list (400-event cap) | all agreeing | **12/12** | |
-| PORTUS sample, whole model | 12 whole compiles | see below | |
+| PORTUS sample, whole model | 12 whole compiles | **12/12 compile whole, 0 raw fallbacks**; 8 agree, 1 disagree (B9), 3 solver timeouts | 2.5 to 33 s vs 8 to 151 s (5 of which needed raw fallbacks) |
 
 The three concurrency models (`ports/dartagnan/{tso,riscv,aarch64}.sl`)
 compile in 0.77, 1.06 and 0.92 s end to end on a loaded machine (3.9 to
@@ -28,7 +28,29 @@ No verdict differs between the two front halves on any runner.
 
 ### PORTUS sample under the direct lowering
 
-(filled in when the run completes; see `ports/portus/auto-sample12-direct.txt`)
+`ports/portus/auto-sample12-direct.txt` in setlah-apps; the egglog columns
+are from `docs/track-a-results.md`.
+
+| command | egglog: compile, raw, verdict | direct: compile, raw, verdict |
+|---|---|---|
+| talks/scc_mp cmd1 | 40 s, 1, agree (relaxed) | 5.4 s, 0, **agree** |
+| alloy/fullsub2 cmd1 | 151 s, 10, solve timeout | 32 s, 0, solve timeout |
+| hc-atd/converge cmd1 | 8 s, 0, agree | 2.5 s, 0, agree |
+| hc-atd/hc7 cmd1 | 89 s, 6, inconclusive | 20 s, 0, **agree** |
+| hc-jwb/hc4 cmd1 | 19 s, 0, agree | 4.2 s, 0, agree |
+| alloy/question cmd1 | 83 s, 1, disagree | 20 s, 0, disagree (B9, now with a clean compile on both paths) |
+| litmustestgen/c11_perturbed cmd1 | 79 s, 0, agree | 25 s, 0, agree |
+| litmustestgen/scc_perturbed_scflip cmd1 | 89 s, 2, inconclusive | 33 s, 0, **agree** |
+| litmustestgen/tso_perturbed cmd1 | 66 s, 4, inconclusive | 15 s, 0, **agree** |
+| amazon/serializableSnapshot cmd1 | 81 s, 0, solve timeout | 31 s, 0, solve timeout |
+| amazon/textbookSnapshot cmd1 | 59 s, 0, solve timeout | 29 s, 0, solve timeout |
+| MSV/lc-lenses cmd1 | 21 s, 0, agree | 3.4 s, 0, agree |
+
+Usable verdicts: 8 agreeing (5 with egglog, 4 on the whole-model path before
+Track A) and the one B9 disagreement; the three timeouts are Clingo's on
+the compiled program (300 s cap), not the compiler's. Compile time here
+includes the translator's output being read and Python start-up; the
+lowering itself is a fraction of it.
 
 ## Local differential
 
@@ -53,8 +75,8 @@ mixed): every enumerable model agrees exactly.
 
 | domain | result |
 |---|---|
-| DuoAI, n=3 | (running) |
-| mypyvy | (running) |
+| DuoAI, n=3 | 142/142 agree (137 UNSAT, 5 SAT), unchanged |
+| mypyvy | (running; 131 of 792 done, all agreeing, at the time of writing) |
 
 ## What the direct lowering does that egglog did not
 
