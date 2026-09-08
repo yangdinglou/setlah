@@ -421,13 +421,27 @@ def _substitute_var_equalities_pyast(glits: list[pyast.AST]) -> list[pyast.AST]:
     if not subst:
         return glits
 
+    # Resolve chains once, then copy each literal once and rename in one walk
+    # (one deep copy per literal per equality was quadratic and dominated the
+    # compile of constraints with many equalities).
+    resolved = {old: new for old, new in subst.items()}
+    for old in list(resolved):
+        new = resolved[old]
+        while new in resolved:
+            new = resolved[new]
+        resolved[old] = new
+
+    import copy
     result: list[pyast.AST] = []
     for i, gl in enumerate(glits):
         if i in eq_indices:
             continue
-        node = gl
-        for old, new in subst.items():
-            node = _subst_var_in_pyast(node, old, new)
+        node = copy.deepcopy(gl)
+        for n in pyast.walk(node):
+            if isinstance(n, pyast.Call) and _is_attr(n.func, "Term", "Var") and len(n.args) == 1:
+                arg = n.args[0]
+                if isinstance(arg, pyast.Constant) and arg.value in resolved:
+                    n.args[0] = pyast.Constant(value=resolved[arg.value])
         result.append(node)
     return result
 

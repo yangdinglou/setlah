@@ -508,31 +508,27 @@ def _apply_symmetry_breaking(
     if not ineq_indices:
         return body_lits
 
-    # Check if this constraint belongs to a symmetric uniqueness pattern
-    # (detected during Phase 1-2 as convertible to count with multiple cores)
-    is_symmetric = False
-    for core, constraint_idxs in core_to_constraints.items():
-        if len(constraint_idxs) > 1:
-            # Multiple constraints with same core = symmetric pattern
-            is_symmetric = True
-            break
+    # Replace "not X = Y" with "X < Y" only where the constraint is symmetric
+    # under swapping X and Y: then every violation with X > Y has a mirror
+    # image with X < Y, and half the ground instances can be dropped. The
+    # check is local to this constraint (swap the names in the other literals
+    # and compare as a multiset); a block-wide flag, as before, rewrote every
+    # inequality in every constraint once one symmetric pair existed, which
+    # silently dropped the X > Y violations of unrelated constraints
+    # (docs/known-issues.md, B10).
+    def swap(text: str, a: str, b: str) -> str:
+        return re.sub(rf"\b({re.escape(a)}|{re.escape(b)})\b", lambda m: b if m.group(1) == a else a, text)
 
-    if not is_symmetric:
-        return body_lits
-
-    # Replace "not X = Y" with "X < Y"
-    result = []
-    for idx, lit in enumerate(body_lits):
-        if idx in ineq_indices:
-            lit = lit.strip()
-            match = re.match(r'not\s+(\w+)\s*=\s*(\w+)', lit)
-            if match:
-                var1, var2 = match.groups()
-                # Use lexicographic ordering to ensure deterministic symmetry breaking
-                result.append(f"{var1} < {var2}")
-            else:
-                result.append(lit)
-        else:
-            result.append(lit)
-
+    result = list(body_lits)
+    for idx in ineq_indices:
+        match = re.match(r'not\s+(\w+)\s*=\s*(\w+)', result[idx].strip())
+        if not match:
+            continue
+        var1, var2 = match.groups()
+        if var1 == var2 or not (var1[:1].isupper() and var2[:1].isupper()):
+            continue
+        others = sorted(l.strip() for i, l in enumerate(result) if i != idx)
+        swapped = sorted(swap(l, var1, var2) for l in others)
+        if others == swapped:
+            result[idx] = f"{var1} < {var2}"
     return result

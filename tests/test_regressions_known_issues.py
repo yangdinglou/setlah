@@ -357,3 +357,33 @@ def test_b2_or_of_and_2x2_is_lowered():
 def test_b2_or_of_and_3x2_is_lowered():
     asp = compile_model("or_of_and_3x2_fallback.sl")
     assert "raw-constraint" not in asp, asp
+
+
+# -------------------------------------------------------------------- B10
+
+@pytest.mark.parametrize(
+    "model,facts,forbidden",
+    [
+        ("wrongcode_b10_symmetry_breaking.sl", "wrongcode_b10.lp", "X < Y"),
+        ("wrongcode_eq_consequent_lt_min.sl", "wrongcode_eq_consequent_lt.lp", "C < A"),
+    ],
+)
+def test_b10_inequality_kept_in_non_symmetric_constraint(model, facts, forbidden):
+    """Symmetry breaking (not X = Y -> X < Y) applies only to constraints that are
+    symmetric in X and Y; a singleton witness elsewhere in the block must not turn
+    other inequalities into orderings (docs/known-issues.md, B10)."""
+    asp = compile_model(model)
+    constraints = [l for l in asp.splitlines() if l.startswith(":- ")]
+    assert not any(forbidden in l for l in constraints), asp
+    assert any("not " in l and " = " in l for l in constraints), asp
+
+
+def test_b10_program_enforces_the_constraint():
+    clingo = pytest.importorskip("clingo")
+    asp = compile_model("wrongcode_b10_symmetry_breaking.sl")
+    ctl = clingo.Control(["0", "--warn=none"])
+    ctl.add("base", [], asp + "\n" + read_facts("wrongcode_b10.lp"))
+    ctl.ground([("base", [])])
+    models = []
+    ctl.solve(on_model=lambda m: models.append({str(s) for s in m.symbols(atoms=True)}))
+    assert models and all("r(2,1)" in m for m in models), len(models)
