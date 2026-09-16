@@ -104,6 +104,10 @@ class DirectLowerer:
         self.aux_rules = []
         self._next_aux = 0
         program.blocks = [self.lower_block(block) for block in program.blocks]
+        projections = self.domain_projections(program)
+        if projections and program.blocks:
+            first = program.blocks[0]
+            program.blocks[0] = LoweredBlock(rules=projections + first.rules, constraints=first.constraints)
         program._aux_next = self._next_aux  # type: ignore[attr-defined]
         if self.aux_rules:
             program._aux_rules = self.aux_rules  # type: ignore[attr-defined]
@@ -112,6 +116,37 @@ class DirectLowerer:
             for r in self.aux_rules:
                 print(f"  {r}")
         return program
+
+    def domain_projections(self, program: nodes.Program) -> list[IRRule]:
+        """``dom_S(X) :- p(.., X, ..)`` for every external predicate argument of an
+        ``ExtDOM`` sort ``S``.
+
+        The compiler guards variables with ``dom_S`` (auxiliary heads here,
+        integrity constraints in the safety pass, aggregate outer variables in
+        the renderer), and ``dom_S`` is supplied by the input for ``ExtDOM``
+        sorts. Inputs that give the sort's elements only through the
+        predicates over it left ``dom_S`` undefined and every guarded rule
+        dead (docs/known-issues.md, B14). The projections define ``dom_S`` as
+        the sort's active domain; with well-typed ``dom_S`` facts they add
+        nothing.
+        """
+        assert self.checker is not None
+        ext_sorts = {d.var.name for d in program.domains if isinstance(d, nodes.ExtDOM)}
+        rules: list[IRRule] = []
+        for decl in program.domains:
+            if not isinstance(decl, nodes.ExtPred):
+                continue
+            info = self.checker.predicates.get(decl.name.name)
+            if info is None:
+                continue
+            for i, sort in enumerate(info.arg_types):
+                if sort not in ext_sorts:
+                    continue
+                args = [pyir.term_var("X") if j == i else pyir.term_anon() for j in range(info.arity)]
+                head = pyir.atom_pred(f"dom_{sort}", [pyir.term_var("X")])
+                body = pyir.formula_lit(pyir.general_lit(pyir.literal(pyir.atom_pred(info.name, args), True)))
+                rules.append(IRRule(head=head, body=[body], is_choice=False))
+        return rules
 
     def lower_block(self, block: nodes.Block) -> LoweredBlock:
         rules: list[IRRule] = []
@@ -258,7 +293,7 @@ class DirectLowerer:
         if agg is None:
             return None
 
-        inner = pyir.formula_lit(self.aggregate(self.builder.aggregate(agg), agg.comp_op))
+        inner = pyir.formula_lit(self.aggregate(self.builder.aggregate(agg, tuple(quantified)), agg.comp_op))
         if guards:
             acc = None
             for g in guards:

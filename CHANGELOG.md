@@ -18,6 +18,16 @@ All notable changes to SetLaH will be documented in this file.
   later release. See `docs/track-b-results.md`,
   `docs/retire-egglog-proposal.md` and `docs/known-issues.md`.
 
+- Direct lowering: `dom_<Sort>(X) :- p(.., X, ..)` projection rules for every
+  external-predicate argument of an `ExtDOM` sort, so guards on the sort
+  domain hold when an input gives the sort's elements only through the
+  predicates over it (B14). Aggregate variables that do not carry the set
+  predicate's argument names fill its remaining positions in order, and an
+  aggregate that cannot be matched is rejected instead of compiling to an
+  unsafe element (B15). A brute-force first-order oracle
+  (`tests/fol_oracle.py`) checks compiled programs against their source
+  constraints in the tests.
+
 ### Deprecated
 
 - The egglog front half (`--lowering egglog`, `src/setlah/rewrite/`,

@@ -294,7 +294,9 @@ class NNFBuilder:
     def __init__(self, canonical_args: dict[str, list[str]]):
         self.canonical_args = canonical_args
 
-    def build(self, node: nodes.FoSet, positive: bool = True) -> object:
+    def build(self, node: nodes.FoSet, positive: bool = True, scope: tuple = ()) -> object:
+        """``scope`` lists the enclosing quantified variables, outermost first;
+        aggregates use it to fill argument positions their names do not match."""
         if isinstance(node, nodes.PredAtom):
             return Lit(PredA(node.predicate.name, tuple(node.args)), positive)
         if isinstance(node, nodes.Comparison):
@@ -304,26 +306,26 @@ class NNFBuilder:
         if isinstance(node, nodes.LogicalOp):
             op = node.op
             if op == "and":
-                items = [self.build(x, positive) for x in node.operands]
+                items = [self.build(x, positive, scope) for x in node.operands]
                 return make_and(items) if positive else make_or(items)
             if op == "or":
-                items = [self.build(x, positive) for x in node.operands]
+                items = [self.build(x, positive, scope) for x in node.operands]
                 return make_or(items) if positive else make_and(items)
             if op == "not":
                 if len(node.operands) != 1:
                     raise TranspileError("not requires exactly one operand")
-                return self.build(node.operands[0], not positive)
+                return self.build(node.operands[0], not positive, scope)
             if op == "impl":
                 if len(node.operands) != 2:
                     raise TranspileError("impl requires exactly two operands")
                 a, b = node.operands
                 if positive:
-                    return make_or([self.build(a, False), self.build(b, True)])
-                return make_and([self.build(a, True), self.build(b, False)])
+                    return make_or([self.build(a, False, scope), self.build(b, True, scope)])
+                return make_and([self.build(a, True, scope), self.build(b, False, scope)])
             raise TranspileError(f"Unknown logical operator {op!r}")
         if isinstance(node, nodes.QuantifiedFormula):
             q = node.quantifier
-            body = self.build(node.body, positive)
+            body = self.build(node.body, positive, scope + (node.variable.name,))
             universal = q in ("forall", "∀")
             if q not in ("forall", "∀", "exists", "∃"):
                 raise TranspileError(f"Unknown quantifier {q!r}")
@@ -331,12 +333,24 @@ class NNFBuilder:
                 return make_forall((node.variable.name,), body)
             return make_exists((node.variable.name,), body)
         if isinstance(node, nodes.Aggregation):
-            return Lit(self.aggregate(node), positive)
+            return Lit(self.aggregate(node, scope), positive)
         raise TranspileError(
             f"The direct lowering does not support {type(node).__name__} inside a formula: {node}"
         )
 
-    def aggregate(self, node: nodes.Aggregation) -> AggA:
+    def aggregate(self, node: nodes.Aggregation, scope: tuple = ()) -> AggA:
+        """``#count {Set_p}(counted) op value`` under the quantified ``scope``.
+
+        The atom inside the aggregate is ``p`` over its full argument list.
+        A formula variable that carries the name of one of ``p``'s canonical
+        arguments (the names of its defining rule's head) takes that
+        position, as the converter always did; the remaining positions are
+        filled positionally by the formula's other variables, enclosing
+        binders first then the projection, so ``forall X. #count
+        {Set_nxt}(Y)`` over ``nxt(A, B)`` means ``nxt(X, Y)``. Anything else
+        is rejected instead of leaving a variable free inside the aggregate
+        (docs/known-issues.md, B15).
+        """
         if not node.set_var.parameters:
             raise TranspileError(
                 "The direct lowering supports aggregates only in the projected form #count {Set_p}(vars) op value"
@@ -345,13 +359,23 @@ class NNFBuilder:
         pred_name = set_name[4:] if set_name.startswith("Set_") else set_name
         pred_name = pred_name.lower()
         counted = tuple(node.set_var.parameters.elements)
-        counted_names = {p.name for p in counted if isinstance(p, nodes.Variable)}
+        counted_names = [p.name for p in counted if isinstance(p, nodes.Variable)]
         canonical = self.canonical_args.get(pred_name, [])
         if canonical and len(counted) < len(canonical):
+            by_name = set(counted_names) | set(scope)
+            unmatched_positions = [i for i, arg_name in enumerate(canonical) if arg_name not in by_name]
+            spare = [v for v in list(scope) + counted_names if v not in canonical]
+            if unmatched_positions and len(spare) != len(unmatched_positions):
+                raise TranspileError(
+                    f"Aggregate over {set_name}: cannot match its variables to the arguments "
+                    f"{tuple(canonical)} of {pred_name} (matched by name: "
+                    f"{[a for a in canonical if a in by_name]}; left over: {spare})"
+                )
+            fill = dict(zip(unmatched_positions, spare))
             full: list = []
-            for arg_name in canonical:
-                if arg_name in counted_names:
-                    full.append(next(p for p in counted if isinstance(p, nodes.Variable) and p.name == arg_name))
+            for i, arg_name in enumerate(canonical):
+                if i in fill:
+                    full.append(nodes.Variable(name=fill[i]))
                 else:
                     full.append(nodes.Variable(name=arg_name))
             args = tuple(full)

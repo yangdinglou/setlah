@@ -52,6 +52,15 @@ the compiled program (300 s cap), not the compiler's. Compile time here
 includes the translator's output being read and Python start-up; the
 lowering itself is a fraction of it.
 
+## Re-run after B14 and B15 (2026-09-16)
+
+With the `dom_<Sort>` projection rules and the aggregate argument matching
+in place (`-direct2` output directories in setlah-apps), every runner
+reproduces the counts above: DuoAI 142/142, mypyvy 792/792, TSO 487/487,
+RVWMO 948 + 2 known + 4, Armv8 640/0/342, VCh-rf 12/12, PORTUS 12/12 whole
+compiles with the same 8 agreeing, 1 B9 disagreement and 3 solver timeouts
+(compile 0.9 to 19.6 s on an idle machine).
+
 ## Local differential
 
 `tests/test_direct_lowering.py`: on 21 models where both front halves compile

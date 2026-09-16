@@ -21,6 +21,9 @@ Reproduce with `setlah tests/inputs/regressions/<file>.sl [facts.lp] --print-asp
 | [B10](#b10) | one symmetric uniqueness pair in a block turns every `not X = Y` of the block into `X < Y` | 0 | **wrong output, silent** | **fixed** |
 | [B11](#b11) | an auxiliary rule with the body `?`: the program does not parse | 0 | wrong output | open (egglog path); direct lowering unaffected |
 | [B12](#b12) | universals that occur in no literal end up as unbound `#count` element variables | 0 | wrong output | open (egglog path); direct lowering unaffected |
+| [B13](#b13) | direct lowering: nested quantifiers rebinding a name reported to give spurious models | 0 | wrong output | not reproduced |
+| [B14](#b14) | auxiliary heads and aggregate outer variables guarded by `dom_<Sort>`, undefined when an `ExtDOM` sort's elements come only through predicates | 0 | **wrong output, silent** | **fixed** (direct lowering) |
+| [B15](#b15) | aggregate variables not named like the defining rule's arguments leave a free variable in the aggregate element | 0 | wrong output | **fixed** (direct lowering) |
 
 Severity: *wrong output* means the compiler exits 0 and the emitted ASP does
 not faithfully encode the model, so a caller that trusts the exit code gets a
@@ -667,3 +670,83 @@ which four occur in no literal. The egglog path emits
 and Clingo refuses to ground it (`X2` to `X5` unsafe); exit 0. The direct
 lowering drops the vacuous binders (sorts are assumed non-empty) and
 compiles the model correctly.
+
+## B13. Shadowed quantifier variables reported to compile to a wrong program (direct lowering) {#b13}
+
+Reported 2026-09-09 by the TPTP FNT benchmark in setlah-apps on the direct
+lowering (snapshot `4df62c7`): six LCL problems whose translations reuse
+`X` and `Y` in alternating nested quantifiers came back `Satisfiable@2`
+with models that the study's model check found to violate two constraints.
+Reproducers `shadowed_binder_direct_lcl653.{sl,lp}` (the singleton `sk_1`,
+its existence constraint, and one conjecture-derived constraint in which
+`X` and `Y` are rebound about twenty times) and `shadowed_binder_direct.sl`
+(one level of shadowing, which the study saw compile correctly). The study
+works around it by renaming binders apart in `tptp2setlah.py`.
+
+**Status 2026-09-16: not reproduced.** On the branch, the compiled LCL653
+program has 736 answer sets at domain size 2 with the reproducer's facts,
+and every one of them satisfies both constraints under a brute-force
+first-order evaluation of the source formulas (`tests/fol_oracle.py`,
+`test_direct_lowering_is_sound_by_first_order_oracle`); the one-level
+reproducer is sound the same way. The lowering handles shadowing by
+construction: free variables are computed with binder scopes, an
+existential is peeled into its integrity constraint only when its names
+occur nowhere else in that conjunction, and nested binders under a
+disjunction always become auxiliaries with their own scope. The report's
+snapshot carries the same lowering code, so the discrepancy is most likely
+on the study side (the instance, the translator revision, or the model
+check's own treatment of shadowing); it needs the original failing
+instance to reopen.
+
+## B14. Guards on `dom_<Sort>` for external sorts, exit 0 {#b14}
+
+Found 2026-09-13 while translating CoCoMoT queries (setlah-apps
+`corpus/tools/cocomot2setlah.py`), again 2026-09-14 in the Mockdown port,
+on the direct lowering.
+
+**Reproducer.** `b14_extdom_sort_guard.{sl,lp}`: an `ExtDOM D` whose
+elements are given only through `dom(X)` and `dom_any(X)`, no `dom_D`
+facts, and a tautological last constraint over `dom_any`. Expected SAT
+with `v_t(2)`; emitted UNSAT.
+
+**Mechanism.** The direct lowering guards an auxiliary head variable that
+no positive literal of the cube binds with the domain predicate of its
+sort, `dom_D(W3)`; the safety pass and the raw aggregate renderer (an
+outer variable guarded by `dom_Tier(T)` in the Mockdown case) do the same
+for integrity constraints. `docs/language.md` says an `ExtDOM` sort is
+"supplied by an input fact file as `dom_Type/1`"; an input that omits the
+facts leaves `dom_D` undefined, the guarded rule never derives, and the
+constraint that depends on it kills every model. Every 1,700-statement
+CoCoMoT query was UNSAT until the translator emitted projection rules
+itself.
+
+**Fix** (branch `direct-lowering`). The lowering emits
+`dom_S(X) :- p(.., X, ..)` for every argument of every `ExtPred` over an
+`ExtDOM` sort `S`, so `dom_S` is defined as the sort's active domain
+whenever the input gives no facts for it; with well-typed `dom_S` facts the
+projections add nothing. Tests `test_b14_*`; the corpus runners reproduce
+their counts with the projections in place.
+
+## B15. Aggregate variables not named like the defining rule's arguments, exit 0 {#b15}
+
+Found 2026-09-15 in the VCh-rf port, reduced 2026-09-16, direct lowering.
+
+**Reproducer.** `b15_aggregate_names.{sl,lp}`: `nxt(A, B)? :- cand(A, B)`
+with `\forall X. #count {Set_nxt}(Y) <= 1`. Emitted
+`:- dom_N(A), dom_N(B), #count{Y : nxt(A, B)} > 1.`, which Clingo rejects
+(`Y` unsafe); exit 0. With the rule's own names, `\forall A. #count
+{Set_nxt}(B) <= 1`, the intended `:- dom_N(A), #count{B : nxt(A, B)} > 1.`
+
+**Mechanism.** A projected aggregate names the set predicate's arguments
+by the variable names of its defining rule's head (the converter's
+desugaring, kept by the direct lowering); a formula variable with another
+name matched nothing, so the atom kept the rule's names and the formula's
+variable stayed free inside the element.
+
+**Fix** (branch `direct-lowering`). Names that match the predicate's
+canonical arguments take their positions as before; the remaining positions
+are filled positionally by the formula's other variables, enclosing binders
+first, then the projection, so the reproducer means `nxt(X, Y)`. A formula
+whose variables cannot be matched that way is rejected with a message
+naming the predicate's arguments, instead of exiting 0 with an unsafe
+program. Tests `test_b15_*`. The egglog path keeps the old behaviour.

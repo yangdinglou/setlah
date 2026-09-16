@@ -180,3 +180,75 @@ def test_direct_lowering_enforces_ite_frame_equality():
             for p in range(2):
                 if (i, p) != (k_i, k_p):
                     assert (f"db_response_sent({i},{p})" in m) == (f"pre_db_response_sent({i},{p})" in m)
+
+
+# ------------------------------------------------ B13, B14, B15 (2026-09-16)
+
+from setlah.parsing.checker import SemanticChecker
+from fol_oracle import Oracle, answer_sets as oracle_answer_sets
+
+
+def oracle_for(source):
+    program = Parser().parse(source)
+    checker = SemanticChecker()
+    checker.check_program(program)
+    return Oracle(program, checker)
+
+
+@pytest.mark.parametrize(
+    "model,facts",
+    [
+        ("shadowed_binder_direct_lcl653.sl", "shadowed_binder_direct_lcl653.lp"),   # B13 report
+        ("shadowed_binder_direct.sl", None),
+        ("b14_extdom_sort_guard.sl", "b14_extdom_sort_guard.lp"),
+        ("b15_aggregate_names.sl", "b15_aggregate_names.lp"),
+        ("wrongcode_b10_symmetry_breaking.sl", "wrongcode_b10.lp"),
+        ("unsafe_u1_empty_domain_cube.sl", "unsafe_u1.lp"),
+    ],
+)
+def test_direct_lowering_is_sound_by_first_order_oracle(model, facts):
+    """Every answer set of the compiled program satisfies every source constraint,
+    evaluated by brute force over the instance's domains (tests/fol_oracle.py).
+    B13 (shadowed binders) was reported on the LCL653 reproducer; exhaustively,
+    none of its answer sets violates a constraint on this branch. The oracle is
+    exponential in quantifier depth times domain size, so only small-domain
+    reproducers are listed."""
+    pytest.importorskip("clingo")
+    source = read(os.path.join(INPUTS, model))
+    inst = read(os.path.join(INPUTS, facts)) if facts else "dom_U(1..3).\n"
+    asp = compile_source(source, "direct")
+    oracle = oracle_for(source)
+    models = oracle_answer_sets(asp, inst, cap=300)   # a sample where the space is large
+    assert models, "the program must be satisfiable on this instance"
+    for m in models:
+        assert not oracle.violations(m), (model, sorted(m))
+
+
+def test_b14_external_sort_gets_its_projection_rules():
+    """An ExtDOM sort whose elements come only through the predicates over it:
+    dom_<Sort> is defined by projection, so guarded auxiliaries can fire."""
+    pytest.importorskip("clingo")
+    source = read(os.path.join(INPUTS, "b14_extdom_sort_guard.sl"))
+    asp = compile_source(source, "direct")
+    assert "dom_D(X) :- dom(X)." in asp and "dom_D(X) :- dom_any(X)." in asp, asp
+    models = oracle_answer_sets(asp, read(os.path.join(INPUTS, "b14_extdom_sort_guard.lp")))
+    assert models and all(("v_t", (2,)) in m for m in models), models
+
+
+def test_b15_aggregate_variables_fill_positions_of_the_set_predicate():
+    """forall X. #count {Set_nxt}(Y) <= 1 over nxt(A, B): X and Y take the
+    positions their names do not match, in order, instead of leaving Y free."""
+    pytest.importorskip("clingo")
+    source = read(os.path.join(INPUTS, "b15_aggregate_names.sl"))
+    asp = compile_source(source, "direct")
+    assert "#count{Y : nxt(X, Y)}" in asp, asp
+    assert len(oracle_answer_sets(asp, read(os.path.join(INPUTS, "b15_aggregate_names.lp")))) == 6
+
+
+def test_b15_unmatchable_aggregate_is_rejected():
+    from setlah.transpile.ir import TranspileError
+
+    source = read(os.path.join(INPUTS, "b15_aggregate_names.sl")).replace(
+        "\\forall X. #count {Set_nxt}(Y) <= 1.", "\\forall X, Z. #count {Set_nxt}(Y) <= 1.")
+    with pytest.raises(TranspileError):
+        compile_source(source, "direct")

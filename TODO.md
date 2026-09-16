@@ -128,3 +128,64 @@ verification queries, Alloy commands translated by PORTUS) with the
 
 - `import re` inside a function in `rw.py`; `.lake/` untracked in the
   Python-only branches; `blog*.md` drafts live in the working tree only.
+
+## From the applications study (setlah-apps, as of 2026-09-16)
+
+Evidence and per-domain detail live in `../setlah-apps/corpus/feature-delta.md`
+(what the expert ASP arm used that compiled SetLah! could not express),
+`../setlah-apps/corpus/consolidation.md` and the port notes under
+`../setlah-apps/ports/*/NOTES.md`. Items below are the compiler's; the
+study keeps its own stand-ins (clingo API around the compiled program).
+
+### Compiler defects (open, reproducers in `tests/inputs/regressions/`)
+
+- [x] **B15** wrong code: aggregate variables not reusing the defining rule's
+  names gave an unsafe aggregate element, exit 0. Fixed on `direct-lowering`
+  (positions the names do not match are filled positionally; anything else
+  is rejected). See `docs/known-issues.md#b15`.
+- [x] **B14** wrong verdict: auxiliary heads and aggregate outer variables guarded
+  by `dom_<Sort>`, undefined for external sorts; hit in CoCoMoT, Mockdown and
+  VCh-rf. Fixed on `direct-lowering`: the lowering emits `dom_<Sort>(X) :- p(.., X, ..)`
+  for every external-predicate argument of an `ExtDOM` sort, so the ports'
+  `projections.lp` stand-ins are no longer needed. See `docs/known-issues.md#b14`.
+- [ ] **B13** (shadowed binders, `docs/known-issues.md#b13`): not reproduced on
+  the branch; the LCL653 reproducer's 736 answer sets all satisfy its
+  constraints under the brute-force oracle (`tests/fol_oracle.py`). Needs the
+  original failing instance or translator output to reopen.
+- [ ] B2, B4, B5, B6 above remain open; B9 (a wrong UNSAT on a PORTUS command)
+  is documented in `../setlah-apps/ports/portus/`.
+
+### Compiler performance and lowering shape
+
+- [ ] Rewrites the study had to do in its translators and that belong in the
+  lowering: distribute `(=> c (and ...))` into per-conjunct constraints;
+  turn one-variable `ite` chains into lookup-table facts; statement-level
+  witnesses for existentials; constants of a query as facts rather than
+  inlined terms. CoCoMoT: 6,963 s compile against 314 s solve over 28 traces
+  (`../setlah-apps/ports/cocomot/NOTES.md`).
+- [ ] Keep functional structure: inlining `define-fun` bodies produces rules
+  whose width does not ground (Pusharoo); a node-by-node derived-predicate
+  lowering grounds all 291 sampled queries (`../setlah-apps/ports/pusharoo/NOTES.md`).
+- [ ] Decide the `grounding-split` branch (rule decomposition, `--split-width`),
+  verdict-preserving on every corpus; the CoCoMoT arm needs it.
+
+### Language features, ranked by what they would have won
+
+1. [ ] **Acyclicity and closure as built-ins with a compact order
+   representation.** VCh-rf: `#edge` removed the cubic closure; the
+   remaining wall was the closure over event pairs, and the closure computed
+   outside the grounder (earliest-successor vectors) took the arm from 39 to
+   56 of 56 on the shared list and from 36 to 60 of 63 on the consistent set,
+   ahead of SMT-Sat (5 of 63 on the same machine).
+2. [ ] **An order theory or integer positions for the part a closure leaves
+   free** (VCh-rf's ccache family; clingo-dl-style propagation).
+3. [ ] **Optimisation**: `#minimize`/`#maximize`, weighted `#sum`, priorities
+   (CoCoMoT cost bound sweep, Mockdown objective).
+4. [ ] **Multi-shot and externals** at the language level (bound sweeps,
+   CEGAR/CEGIS loops; done today through the clingo API).
+5. [ ] **Negation in rule bodies** (Mockdown, VCh-rf choice restriction).
+6. [ ] **Bounded integer arithmetic as a domain** (CoCoMoT edit-distance cells,
+   Pusharoo verification conditions).
+7. [ ] **Exact rational arithmetic or an oracle hook** (Mockdown is MaxSMT
+   over reals; clingcon's integers are inexact there: 211 of 1,862 below z3).
+8. [ ] **Term-level recursion** over data (CoCoMoT guards).
