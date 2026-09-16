@@ -779,10 +779,20 @@ decided the outcome. The pieces on their own lower correctly, and so does
 the shape with the guard inside the choice body (`pick(X, Y)? :- constr(X),
 alt(X, Y)` gives `1{pick(X, Y) : alt(X, Y)}1 :- constr(X).`).
 
+**Third form** (2026-09-17, predictive-deadlock port,
+`b16_choice_guard_lost_2.{sl,lp}`): the choice is guarded by `f(X)` and the
+existence constraint quantifies over the wider `t(X)`; emitted
+`1{cut(X, Q) : f(X), pos(Q)}1.`, a global "exactly one cut", 6 answer sets
+instead of 9. Same mechanism: `t(X)` is not a literal of the choice body.
+
 **Fix** (branch `direct-lowering`). The fusion now requires the guards of
 *every* constraint of the core to be literals of the choice rule's body,
 renamed through each constraint's own argument map, and takes their union
 as the cardinality rule's body; otherwise the core is left alone and the
 constraints are emitted as integrity constraints, which is what the pieces
-did on their own. The reproducer gives 8 answer sets; the witness fusions
-on the corpora (`1{k(X) : dom_Node(X)}1.`, no guards) are unchanged.
+did on their own. The reproducers give 8 answer sets (24 with an unguarded
+key, `b16_choice_guard_lost_extra.lp`) and 9; the witness fusions on the
+corpora (`1{k(X) : dom_Node(X)}1.`, no guards) are unchanged. The
+alternative the note suggests, `1{cut(X, Q) : pos(Q)}1 :- f(X).` plus the
+existence constraint over `t(X)`, is an optimisation on top of this and is
+not done.

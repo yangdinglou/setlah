@@ -391,21 +391,29 @@ def test_b10_program_enforces_the_constraint():
 
 # -------------------------------------------------------------------- B16
 
-def test_b16_guarded_existence_is_not_fused_without_its_guard():
+@pytest.mark.parametrize(
+    "model,facts,expected",
+    [
+        ("b16_choice_guard_lost.sl", "b16_choice_guard_lost.lp", 8),
+        ("b16_choice_guard_lost.sl", "b16_choice_guard_lost_extra.lp", 24),   # a key without the guard
+        ("b16_choice_guard_lost_2.sl", "b16_choice_guard_lost_2.lp", 9),      # existence over a wider predicate
+    ],
+)
+def test_b16_guarded_existence_is_not_fused_without_its_guard(model, facts, expected):
     """A per-key choice with a guarded existence constraint and a uniqueness
     constraint must not collapse into one global 1{...}1 (docs/known-issues.md, B16)."""
     clingo = pytest.importorskip("clingo")
-    asp = compile_model("b16_choice_guard_lost.sl")
-    assert "1{pick(X, Y) : alt(X, Y)}1." not in asp, asp
+    asp = compile_model(model)
+    assert not any(l.startswith("1{") and " :- " not in l for l in asp.splitlines()), asp
     ctl = clingo.Control(["0", "--warn=none"])
-    ctl.add("base", [], asp + "\n" + read_facts("b16_choice_guard_lost.lp"))
+    ctl.add("base", [], asp + "\n" + read_facts(facts))
     ctl.ground([("base", [])])
     n = 0
     def on_model(_):
         nonlocal n
         n += 1
     ctl.solve(on_model=on_model)
-    assert n == 8, n
+    assert n == expected, n
 
 
 def test_b16_unguarded_witness_still_fuses():

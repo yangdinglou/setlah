@@ -204,6 +204,7 @@ def oracle_for(source):
         ("b14_extdom_sort_guard.sl", "b14_extdom_sort_guard.lp"),
         ("b15_aggregate_names.sl", "b15_aggregate_names.lp"),
         ("b16_choice_guard_lost.sl", "b16_choice_guard_lost.lp"),
+        ("b16_choice_guard_lost_2.sl", "b16_choice_guard_lost_2.lp"),
         ("wrongcode_b10_symmetry_breaking.sl", "wrongcode_b10.lp"),
         ("unsafe_u1_empty_domain_cube.sl", "unsafe_u1.lp"),
     ],
