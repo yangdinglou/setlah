@@ -387,3 +387,29 @@ def test_b10_program_enforces_the_constraint():
     models = []
     ctl.solve(on_model=lambda m: models.append({str(s) for s in m.symbols(atoms=True)}))
     assert models and all("r(2,1)" in m for m in models), len(models)
+
+
+# -------------------------------------------------------------------- B16
+
+def test_b16_guarded_existence_is_not_fused_without_its_guard():
+    """A per-key choice with a guarded existence constraint and a uniqueness
+    constraint must not collapse into one global 1{...}1 (docs/known-issues.md, B16)."""
+    clingo = pytest.importorskip("clingo")
+    asp = compile_model("b16_choice_guard_lost.sl")
+    assert "1{pick(X, Y) : alt(X, Y)}1." not in asp, asp
+    ctl = clingo.Control(["0", "--warn=none"])
+    ctl.add("base", [], asp + "\n" + read_facts("b16_choice_guard_lost.lp"))
+    ctl.ground([("base", [])])
+    n = 0
+    def on_model(_):
+        nonlocal n
+        n += 1
+    ctl.solve(on_model=on_model)
+    assert n == 8, n
+
+
+def test_b16_unguarded_witness_still_fuses():
+    """The witness shape of the corpora (existence without a guard plus uniqueness)
+    keeps its 1{...}1 fusion."""
+    asp = compile_model("exists_binders8_ok.sl")
+    assert "1{k0(X) : dom_U(X)}1." in asp and "1{k7(X) : dom_U(X)}1." in asp, asp

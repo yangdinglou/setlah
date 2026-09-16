@@ -67,6 +67,28 @@ verification queries, Alloy commands translated by PORTUS) with the
 
 ## Architecture
 
+- **The back half matches rendered strings.** `transpile/rewrite.py`,
+  `merge.py`, `safety.py` and the second half of `pipeline.py` detect
+  patterns and rebuild rules by regular expressions over rendered literals
+  (`not X = Y`, `pred(args)`), then re-split them on commas. B10 and B16
+  were both defects of that machinery: a property of one constraint
+  (symmetry, a guard) was checked on the wrong text or not at all. The
+  passes should take the IR (`IRRule`/`IRConstraint` over `pyast` nodes),
+  decide on structure, and render once at the end; the direct lowering
+  already hands them exactly that. Estimated a week; the sampled
+  differential and the first-order oracle (`tests/fol_oracle.py`) are the
+  safety net.
+- **LALR needs one grammar decision.** With the direct lowering the parse is
+  most of the compile (0.17 s of 0.3 s on a DuoAI query; the lowering is 1 ms).
+  `Lark(parser="lalr")` rejects the grammar with a reduce/reduce collision
+  on `DOT` between `head_part : pred_atom` and `literal : pred_atom`: a bare
+  `p(X).` is both a fact and a one-literal constraint. Deciding that a bare
+  atom statement is a fact (or requiring constraints to be parenthesised)
+  removes the collision; then LALR with the standard lexer and Lark's table
+  cache should cut the parse to a few hundredths. Checked 2026-09-17.
+- **Cache the parser** (still open): `Parser()` rebuilds the Earley grammar
+  per instance, 0.04 s each.
+
 - **Retire the printed-term round trip.** The rewriter serialises egglog's
   extracted expression to text and reads it back with `eval`, `ast.parse`
   and regular expressions over the printed term (`rw.py` and `transpile/`).
@@ -148,6 +170,12 @@ study keeps its own stand-ins (clingo API around the compiled program).
   VCh-rf. Fixed on `direct-lowering`: the lowering emits `dom_<Sort>(X) :- p(.., X, ..)`
   for every external-predicate argument of an `ExtDOM` sort, so the ports'
   `projections.lp` stand-ins are no longer needed. See `docs/known-issues.md#b14`.
+- [x] **B16** wrong code: a per-key choice with a guarded existence constraint and a
+  uniqueness constraint was fused into one global `1{...}1`, dropping the guard;
+  both lowerings (shared back half). Found in the isolation port. Fixed on
+  `direct-lowering`: the fusion requires every core member's guards in the
+  choice body, else the constraints stay as they are. See
+  `docs/known-issues.md#b16`.
 - [ ] **B13** (shadowed binders, `docs/known-issues.md#b13`): not reproduced on
   the branch; the LCL653 reproducer's 736 answer sets all satisfy its
   constraints under the brute-force oracle (`tests/fol_oracle.py`). Needs the
@@ -189,3 +217,35 @@ study keeps its own stand-ins (clingo API around the compiled program).
 7. [ ] **Exact rational arithmetic or an oracle hook** (Mockdown is MaxSMT
    over reals; clingcon's integers are inexact there: 211 of 1,862 below z3).
 8. [ ] **Term-level recursion** over data (CoCoMoT guards).
+
+## Language items from the applications study (2026-09-17)
+
+Recorded in detail in `setlah-apps/corpus/feature-delta.md`; the manual
+attachments used as stand-ins are the evidence that each is needed.
+
+- [ ] **Acyclicity built-in.** Three domains (serializability, snapshot
+  isolation, predictive deadlocks) attach clingo's `#edge` to the compiled
+  program; with it the SetLah! arm equals the expert arm, without it the
+  closure written in the language costs 30x (Cobra) or does not ground.
+  Snapshot isolation needs `#edge` with tuple node terms (two layers per
+  transaction). A language construct for "this binary relation is acyclic"
+  (or an order theory) is the single most used missing feature.
+- [ ] **Default negation in rule and choice bodies.** `\neg` in a rule body
+  is a parse error by design (paper Sec. 4.1). Measured cost: the deadlock
+  port had to emit a pre-pass fact for "thread and not pattern thread"; the
+  OLSQ port's frame rule became a choice plus constraint (faster there).
+  Stratified negation in rule bodies would remove the pre-pass in the first
+  case; the second is a design property to keep documenting.
+- [ ] **Weighted objectives.** `#minimize` with weights / weak constraints
+  attached in CoCoMoT (edit distance), Mockdown (layout cost) and the
+  DiMage-DFT candidate (integer cost tables per mapping choice); Mockdown
+  also needs `#sum` over weights.
+- [ ] **Integer cost tables and sums.** Bounded integers as a domain work
+  (Pusharoo), but sums of integer values along chains (MiniMalloc, TSN
+  offsets) are clingcon territory, outside the language: recorded as out of
+  scope, not as a feature.
+- [ ] **External theory propagator.** Mockdown's linear-real constraints
+  (thousands of CEGAR nogoods) and the AMD port-mapping throughput model
+  (linear real pressures per port) need an LRA propagator behind the
+  derived-predicate lowering; also out of scope for the finite core, but the
+  boundary should be stated in the paper.

@@ -28,6 +28,13 @@ All notable changes to SetLaH will be documented in this file.
   (`tests/fol_oracle.py`) checks compiled programs against their source
   constraints in the tests.
 
+- Choice/count merging (`transpile/merge.py`, `pipeline.py`): an
+  existence/uniqueness pair is fused into `1{...}1` or `#count != 1` only
+  when the guards of every constraint of the pair are literals of the
+  choice rule's body; otherwise both constraints are emitted as they are.
+  A guarded existence constraint used to lose its guard (B16, both
+  lowerings).
+
 ### Deprecated
 
 - The egglog front half (`--lowering egglog`, `src/setlah/rewrite/`,

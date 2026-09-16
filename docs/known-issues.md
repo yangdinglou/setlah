@@ -24,6 +24,7 @@ Reproduce with `setlah tests/inputs/regressions/<file>.sl [facts.lp] --print-asp
 | [B13](#b13) | direct lowering: nested quantifiers rebinding a name reported to give spurious models | 0 | wrong output | not reproduced |
 | [B14](#b14) | auxiliary heads and aggregate outer variables guarded by `dom_<Sort>`, undefined when an `ExtDOM` sort's elements come only through predicates | 0 | **wrong output, silent** | **fixed** (direct lowering) |
 | [B15](#b15) | aggregate variables not named like the defining rule's arguments leave a free variable in the aggregate element | 0 | wrong output | **fixed** (direct lowering) |
+| [B16](#b16) | a per-key choice with a guarded existence constraint and a uniqueness constraint fused into one global `1{...}1`, guard dropped | 0 | **wrong output, silent** | **fixed** (both lowerings) |
 
 Severity: *wrong output* means the compiler exits 0 and the emitted ASP does
 not faithfully encode the model, so a caller that trusts the exit code gets a
@@ -750,3 +751,38 @@ first, then the projection, so the reproducer means `nxt(X, Y)`. A formula
 whose variables cannot be matched that way is rejected with a message
 naming the predicate's arguments, instead of exiting 0 with an unsafe
 program. Tests `test_b15_*`. The egglog path keeps the old behaviour.
+
+## B16. Cardinality fusion drops the guard of a per-key choice, exit 0 {#b16}
+
+Found 2026-09-16 in the database-isolation port (setlah-apps
+`ports/isolation`, Cobra polygraphs), on both lowerings: the fusion lives
+in the shared back half (`transpile/merge.py`,
+`_merge_choice_with_detected_counts`).
+
+**Reproducer.** `b16_choice_guard_lost.{sl,lp}`: `pick(X, Y)? :- alt(X, Y)`
+with a guarded existence constraint
+`forall X. constr(X) -> exists Y. pick(X, Y)` and a uniqueness constraint
+`forall X, Y1, Y2. pick(X, Y1) and pick(X, Y2) -> Y1 = Y2`. Emitted
+`1{pick(X, Y) : alt(X, Y)}1.`, one pick in the whole program; 6 answer
+sets instead of 8. On the Cobra polygraph `unit_test/unsat.polyg` the port
+answered SAT for an unsatisfiable instance.
+
+**Mechanism.** The existence and uniqueness constraints form one
+count-convertible core, and the pass replaces the choice rule and both
+constraints by `1{h : extra}1 :- shared`, where `shared` are the guards of
+the constraint it happens to be looking at and must be literals of the
+choice rule's body. It checked that for one constraint only: the
+uniqueness constraint has no guard, passed trivially, and the whole core
+was marked merged with the existence constraint's guard `constr(X)`
+dropped. Whether the existence or the uniqueness constraint came first
+decided the outcome. The pieces on their own lower correctly, and so does
+the shape with the guard inside the choice body (`pick(X, Y)? :- constr(X),
+alt(X, Y)` gives `1{pick(X, Y) : alt(X, Y)}1 :- constr(X).`).
+
+**Fix** (branch `direct-lowering`). The fusion now requires the guards of
+*every* constraint of the core to be literals of the choice rule's body,
+renamed through each constraint's own argument map, and takes their union
+as the cardinality rule's body; otherwise the core is left alone and the
+constraints are emitted as integrity constraints, which is what the pieces
+did on their own. The reproducer gives 8 answer sets; the witness fusions
+on the corpora (`1{k(X) : dom_Node(X)}1.`, no guards) are unchanged.

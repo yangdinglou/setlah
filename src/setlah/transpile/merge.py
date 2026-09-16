@@ -196,6 +196,76 @@ def _merge_choice_partition(
     return remaining_rules, remaining_constraints, merged_lines
 
 
+def _core_guards_in_choice_body(
+    rules: list["IRRule"],
+    convertible_to_count: dict[int, tuple[str, list[str], list[str]]],
+    member_idxs: list[int],
+) -> tuple[int, list[str], list[str]] | None:
+    """The choice rule that an existence/uniqueness core may be merged into.
+
+    Merging a core into one cardinality rule or one ``#count != 1`` constraint
+    replaces every constraint of the core, so the guards ("shared" literals)
+    of every member must be literals of the choice rule's body, renamed
+    through the member's own argument map: then every key the choice ranges
+    over is one the guards admit, and the bound is right for all of them.
+    Returns ``(rule index, rule argument list, union of the renamed guards)``
+    for the first choice rule that qualifies, or None (docs/known-issues.md,
+    B16).
+    """
+    if not member_idxs:
+        return None
+    first_cond = convertible_to_count[member_idxs[0]][2]
+    if len(first_cond) != 1:
+        return None
+    head_match = re.match(r'([a-z_][a-z0-9_]*)\s*\((.*)\)', first_cond[0], re.IGNORECASE)
+    if not head_match:
+        return None
+    pred_name = head_match.group(1)
+
+    for rule_idx, r in enumerate(rules):
+        if not r.is_choice:
+            continue
+        head_info = _extract_pred_atom_info(r.head)
+        if head_info is None or head_info[0] != pred_name:
+            continue
+        rule_args = list(head_info[1])
+        rule_body: list[str] = []
+        for b in r.body:
+            rule_body.extend(_formula_to_body_lits(b))
+        body_set = set(rule_body)
+        guards: list[str] = []
+        ok = True
+        for member_idx in member_idxs:
+            _, m_shared, m_cond = convertible_to_count[member_idx]
+            m_match = re.match(r'([a-z_][a-z0-9_]*)\s*\((.*)\)', m_cond[0], re.IGNORECASE) if len(m_cond) == 1 else None
+            if not m_match or m_match.group(1) != pred_name:
+                ok = False
+                break
+            m_args = [a.strip() for a in m_match.group(2).split(",")]
+            if len(m_args) != len(rule_args):
+                ok = False
+                break
+            m_map: dict[str, str] = {}
+            for m_arg, rule_arg in zip(m_args, rule_args):
+                if m_map.setdefault(m_arg, rule_arg) != rule_arg:
+                    ok = False
+                    break
+            if not ok:
+                break
+            for lit in m_shared:
+                renamed = _substitute_vars_in_lit(lit, m_map)
+                if renamed not in body_set:
+                    ok = False
+                    break
+                if renamed not in guards:
+                    guards.append(renamed)
+            if not ok:
+                break
+        if ok:
+            return rule_idx, rule_args, guards
+    return None
+
+
 def _merge_choice_with_detected_counts(
     rules: list["IRRule"],
     convertible_to_count: dict[int, tuple[str, list[str], list[str]]],
@@ -283,14 +353,16 @@ def _merge_choice_with_detected_counts(
                 else:
                     var_map[cond_arg] = rule_arg
             else:
-                # Mapping succeeded, now check if shared literals match after substitution
-                renamed_shared = [_substitute_vars_in_lit(lit, var_map) for lit in shared_lits]
-
+                # Mapping succeeded; the guards of every member of the core must
+                # be in this rule's body (docs/known-issues.md, B16).
+                qualified = _core_guards_in_choice_body(
+                    rules, convertible_to_count, core_to_constraints.get(core, [c_idx])
+                )
+                if qualified is None or qualified[0] != rule_idx:
+                    continue
+                renamed_shared = qualified[2]
                 rule_body_set = set(rule_body_lits)
                 renamed_shared_set = set(renamed_shared)
-
-                if not renamed_shared_set.issubset(rule_body_set):
-                    continue
 
                 # Extract extra literals (those not in shared)
                 extra_lits = [lit for lit in rule_body_lits if lit not in renamed_shared_set]

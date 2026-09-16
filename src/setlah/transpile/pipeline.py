@@ -35,6 +35,7 @@ from .rewrite import (
 from .merge import (
     _merge_choice_partition,
     _merge_choice_with_detected_counts,
+    _core_guards_in_choice_body,
     _apply_symmetry_breaking,
 )
 
@@ -218,7 +219,10 @@ def _lower_block(
                         has_existence = True
                     else:
                         has_uniqueness = True
-            if has_existence and has_uniqueness:
+            if has_existence and has_uniqueness and _core_guards_in_choice_body(
+                rules, convertible_to_count, constraint_group
+            ) is not None:
+                # every member's guards must be in the choice body (B16)
                 mergeable_cores.add(core)
 
     # Track which constraints have been merged (to skip them later)
