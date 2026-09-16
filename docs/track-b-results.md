@@ -61,6 +61,15 @@ RVWMO 948 + 2 known + 4, Armv8 640/0/342, VCh-rf 12/12, PORTUS 12/12 whole
 compiles with the same 8 agreeing, 1 B9 disagreement and 3 solver timeouts
 (compile 0.9 to 19.6 s on an idle machine).
 
+## Re-run after B16 (2026-09-17)
+
+With the guard check in both merge passes (`-direct3` output directories):
+DuoAI 142/142, mypyvy 792/792, TSO 487/487, RVWMO 948 + 2 known + 4,
+Armv8 640/0/342, PORTUS 12/12 whole compiles with the same 8 agreeing, 1 B9
+and 3 solver timeouts, VCh-rf 12/12 (one 120 s solver timeout in the loaded
+run disappeared on an idle re-run; the compiled program is byte-identical
+to the pre-B16 one).
+
 ## Local differential
 
 `tests/test_direct_lowering.py`: on 21 models where both front halves compile
