@@ -70,6 +70,26 @@ and 3 solver timeouts, VCh-rf 12/12 (one 120 s solver timeout in the loaded
 run disappeared on an idle re-run; the compiled program is byte-identical
 to the pre-B16 one).
 
+## Compile time after the LALR parser (2026-09-18)
+
+The Earley parse was the whole compile of a large model. Stage timings on
+synthetic mixed models (rules, recursive rules and quantified constraints):
+
+| statements | parse, Earley | parse, LALR | lowering | back half |
+|---|---|---|---|---|
+| 752 | 4.9 s | 0.2 s | 0.1 s | 0.1 s |
+| 3,002 | 21.0 s | 0.8 s | 0.5 s | 0.2 s |
+| 12,002 | 94.5 s | 4.8 s | 2.6 s | 0.9 s |
+| 48,002 | (not run) | 19.8 s | 14.0 s | 3.9 s |
+
+On the corpora: DuoAI queries compile in 0.16 s each (mean; 1.1 s before,
+4.8 s with egglog), the memory models in 0.2 s. The grammar change is
+AST-identical on 253 files (examples, reproducers, corpus translations,
+PORTUS, memory models, limits, isolation, deadlock). The lowering's own
+time grows faster than linear past 10k statements (the checker and the
+per-constraint type collection); at 48k statements it is 14 s and the next
+thing to look at if CoCoMoT-sized models matter.
+
 ## Local differential
 
 `tests/test_direct_lowering.py`: on 21 models where both front halves compile

@@ -35,6 +35,14 @@ All notable changes to SetLaH will be documented in this file.
   A guarded existence constraint used to lose its guard (B16, both
   lowerings).
 
+- The parser runs Lark's LALR(1) with the contextual lexer instead of
+  Earley with the dynamic lexer, and is built once per process. The grammar
+  reserves a bare predicate atom statement for facts (which is how it was
+  always read) and lexes the `=` of `Let` as the comparison token; every
+  local, corpus, PORTUS and memory-model file parses to the same AST as
+  before (253 files checked), 25 times faster overall and linear in the
+  input: 12,000 statements parse in seconds where Earley took 94 s.
+
 ### Deprecated
 
 - The egglog front half (`--lowering egglog`, `src/setlah/rewrite/`,

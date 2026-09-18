@@ -1,4 +1,4 @@
-from lark import Transformer, v_args
+from lark import Transformer, Token, v_args
 from ..ast import nodes as nodes
 
 class AstTransformer(Transformer):
@@ -23,6 +23,7 @@ class AstTransformer(Transformer):
         return nodes.TupleVar(elements=vars_list)
 
     def const_decl(self, items):
+        items = [x for x in items if not isinstance(x, Token)]   # the "=" token
         return nodes.ConstDecl(name=items[0], dtype=items[1], value=items[2] if len(items) > 2 else None)
 
     def type_int(self, _): return nodes.IntType()
@@ -43,7 +44,9 @@ class AstTransformer(Transformer):
     def set_constraint(self, items):
         return nodes.SetConstraint(let_exprs=[x for x in items if isinstance(x, nodes.LetExpr)], formula=items[-1])
 
-    def let_expr(self, items): return nodes.LetExpr(variable=items[0], value=items[1])
+    def let_expr(self, items):
+        items = [x for x in items if x is not None and not isinstance(x, Token)]
+        return nodes.LetExpr(variable=items[0], value=items[1])
     def empty_set(self, _): return nodes.EmptySet()
     def set_var(self, items):
         return nodes.SetVar(name=items[0].name, parameters=items[1] if len(items) > 1 else None)
@@ -101,6 +104,7 @@ class AstTransformer(Transformer):
         return nodes.LogicalOp(op=op, operands=items[1:])
     
     def aggregation(self, items):
+        items = [x for x in items if x is not None]   # LALR leaves a placeholder for the optional projection
         op = str(items[0])
         set_var = items[1]
         idx = 2
@@ -125,6 +129,7 @@ class AstTransformer(Transformer):
         return nodes.Comparison(op=self._normalize_op(str(items[0])), left=items[1], right=items[2])
     
     def pred_atom(self, items):
+        items = [x for x in items if x is not None]   # LALR leaves a placeholder for an empty argument list
         return nodes.PredAtom(predicate=items[0], args=items[1] if len(items) > 1 else [])
     
     def arg_list(self, items): return items

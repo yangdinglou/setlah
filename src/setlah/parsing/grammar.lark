@@ -10,7 +10,9 @@ ext_dom: "ExtDOM" upper_id ":" type_def "."
 ext_pred: "ExtPred" lower_id ":" pred_sig "."
 pred_sig: "(" type_def ("," type_def)* ")"
 
-const_decl: "Const" lower_id ":" type_def ("=" constant)? "."
+// "=" is the comparison token here too: after an identifier the lexer must
+// have one reading of "=" (the state is shared with infix comparisons).
+const_decl: "Const" lower_id ":" type_def (COMP_OP constant)? "."
 
 // --- Types ---
 type_def: "INT"    -> type_int
@@ -40,9 +42,11 @@ body_part: literal ("," literal)*
 literal: pred_atom | comparison
 
 // --- Set Constraints ---
-set_constraint: let_expr* foset "."
+set_constraint: let_expr* top_foset "."
 
-let_expr: "Let" set_var "=" set_expr "in"
+// "=" is the comparison token here so that the lexer has one reading of "="
+// after a set variable (Let and aggregation share that parser state).
+let_expr: "Let" set_var AGG_COMP set_expr "in"
 
 // ==========================================
 // Set Expressions
@@ -71,6 +75,19 @@ SET_BIN_OP: "∪" | "∩" | "Δ" | "⊕"
       | set_subset
       | set_partition
       | literal
+      | boolean_const
+      | "(" foset ")"
+
+// A statement that is a bare predicate atom is a fact (a rule with no body),
+// as it always was; a constraint at the top level is anything else a formula
+// can be. Keeping the two apart is what lets the grammar run under LALR.
+?top_foset: quantified_formula
+      | aggregation
+      | logic_op
+      | set_membership
+      | set_subset
+      | set_partition
+      | comparison
       | boolean_const
       | "(" foset ")"
 

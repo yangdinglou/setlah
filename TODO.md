@@ -78,16 +78,13 @@ verification queries, Alloy commands translated by PORTUS) with the
   already hands them exactly that. Estimated a week; the sampled
   differential and the first-order oracle (`tests/fol_oracle.py`) are the
   safety net.
-- **LALR needs one grammar decision.** With the direct lowering the parse is
-  most of the compile (0.17 s of 0.3 s on a DuoAI query; the lowering is 1 ms).
-  `Lark(parser="lalr")` rejects the grammar with a reduce/reduce collision
-  on `DOT` between `head_part : pred_atom` and `literal : pred_atom`: a bare
-  `p(X).` is both a fact and a one-literal constraint. Deciding that a bare
-  atom statement is a fact (or requiring constraints to be parenthesised)
-  removes the collision; then LALR with the standard lexer and Lark's table
-  cache should cut the parse to a few hundredths. Checked 2026-09-17.
-- **Cache the parser** (still open): `Parser()` rebuilds the Earley grammar
-  per instance, 0.04 s each.
+- **Parser: done (2026-09-18).** LALR(1) with the contextual lexer, built
+  once per process. The collision was resolved by reserving a bare atom
+  statement for facts, which is how the Earley parser already read it, and
+  by lexing the `=` of `Let` as the comparison token. Identical ASTs on 253
+  files; parse time 391 s to 15.8 s over them, linear in the input. The
+  CoCoMoT compile-time item (33 s at 4k statements, 666 s at 41k, the parse
+  being 98 percent of it) is answered by this.
 
 - **Retire the printed-term round trip.** The rewriter serialises egglog's
   extracted expression to text and reads it back with `eval`, `ast.parse`
