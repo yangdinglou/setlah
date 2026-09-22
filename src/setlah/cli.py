@@ -8,7 +8,7 @@ import io
 
 from setlah import __version__
 from setlah.parsing.parser import Parser
-from setlah.transpile import transpile_program_to_asp, transpile_program_to_clingo, run_clingo_ast
+from setlah.transpile import transpile_program_to_asp, transpile_program_to_clingo, run_clingo_ast, run_clingodl_source
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="SetLaH -> (egg) -> Clingo transpiler (FO only)")
@@ -39,6 +39,18 @@ def main(argv: list[str] | None = None) -> int:
         help="Apply all safe post-processing ground/aggregate rewrites (otherwise only when mergeable)",
     )
     ap.add_argument("--clingo-arg", action="append", default=[], help="Extra argument passed to clingo (repeatable)")
+    ap.add_argument(
+        "--order-lowering",
+        default=None,
+        help="Lowering of order sorts: dl (difference logic, default), rel (a preorder relation, pure ASP), or per sort as X=rel,C=dl; "
+        "the default can be set with SETLAH_ORDER_LOWERING",
+    )
+    ap.add_argument(
+        "--backend",
+        choices=["auto", "clingo", "clingo-dl"],
+        default="auto",
+        help="Solver: clingo, or clingo-dl for programs with order sorts (auto: clingo-dl when the compiled program has &diff atoms)",
+    )
     ap.add_argument(
         "--lowering",
         choices=["direct", "egglog"],
@@ -79,11 +91,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         from setlah.rewrite.rw import Rewriter as front
-    rw = front(
-        verbose=args.verbose,
-        entailment_elim=args.entailment_elim,
-        enable_cost_conversion=args.cost_conversion,
-    )
+    front_kwargs = dict(verbose=args.verbose, entailment_elim=args.entailment_elim, enable_cost_conversion=args.cost_conversion)
+    if args.lowering == "direct":
+        front_kwargs["order_lowering"] = args.order_lowering
+    rw = front(**front_kwargs)
     if args.verbose:
         rewritten = rw.rewrite_program(program, convert_only=False)
         print(f"Total rewriting time: {time.perf_counter() - t0:.3f}s")
@@ -114,6 +125,21 @@ def main(argv: list[str] | None = None) -> int:
                 with open(path, "r", encoding="utf-8") as f:
                     print(f.read())
         return 0
+
+    asp_source = transpile_program_to_asp(rewritten, grounding=args.grounding)
+    use_dl = args.backend == "clingo-dl" or (args.backend == "auto" and "&diff{" in asp_source)
+    if use_dl:
+        if args.verbose:
+            print(f"Transpiling time: {time.perf_counter() - t0:.3f}s")
+            print()
+
+        def on_dl_model(mv):
+            m, assignment = mv
+            print(m)
+            print(" ".join(f"{k}={v}" for k, v in assignment))
+
+        res = run_clingodl_source(asp_source, extra_files=list(args.facts), arguments=list(args.clingo_arg), on_model=on_dl_model)
+        return 0 if res.satisfiable else 10
 
     tr = transpile_program_to_clingo(rewritten, grounding=args.grounding)
     if args.verbose:

@@ -15,6 +15,9 @@ class AstTransformer(Transformer):
 
     def ext_pred(self, items): return nodes.ExtPred(name=items[0], tuple_var=items[1]) 
 
+    def ord_dom(self, items): return nodes.OrdDOM(var=items[0], lo=items[1], hi=items[2])
+    def fun_decl(self, items): return nodes.FunDecl(name=items[0], args=list(items[1:-1]), result=items[-1])
+
     def pred_sig(self, items):
         vars_list = []
         for item in items:

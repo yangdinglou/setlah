@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (branch order-sorts)
+
+- Order sorts: `OrdDOM` and `Fun` declarations, the difference-logic lowering (`lowering/order.py`), the theory section in the emitted ASP, `run_clingodl_source` and the CLI `--backend` option; the relational lowering (`--order-lowering rel`, per sort) as a second lowering of the same declarations; design and theorems in `docs/order-sorts.md`.
+
 All notable changes to SetLaH will be documented in this file.
 
 ## [Unreleased]

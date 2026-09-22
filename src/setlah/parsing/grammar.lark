@@ -1,11 +1,17 @@
 start: domain_decl* block*
 
-?domain_decl: def_dom | ext_dom | ext_pred | const_decl
+?domain_decl: def_dom | ext_dom | ord_dom | fun_decl | ext_pred | const_decl
 
 // --- Domain Declarations ---
 def_dom: "DefDOM" upper_id ":" type_def set_def "."
 ext_dom: "ExtDOM" upper_id ":" type_def "." 
        | "ExtDOM" upper_id ":" type_def upper_id "." 
+
+// An order sort: a bounded integer sort whose values occur only in comparisons and
+// constant offsets (docs/order-sorts.md); lowered to difference logic.
+ord_dom: "OrdDOM" upper_id ":" constant ".." constant "."
+// A total function from finite sorts into an order sort.
+fun_decl: "Fun" lower_id ":" "(" upper_id ("," upper_id)* ")" "->" upper_id "."
 
 ext_pred: "ExtPred" lower_id ":" pred_sig "."
 pred_sig: "(" type_def ("," type_def)* ")"

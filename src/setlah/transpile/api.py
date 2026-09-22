@@ -118,6 +118,12 @@ def transpile_program_to_asp(program: Any, *, grounding: bool = False) -> str:
         aux_section = "\n".join(guarded_aux_rules)
         parts.insert(0, aux_section)
 
+    # Theory rules of the order-sort lowering (docs/order-sorts.md), emitted verbatim:
+    # reified comparison Booleans with their &diff atoms and the sorts' ranges.
+    theory_rules = getattr(program, "_theory_rules", None)
+    if theory_rules:
+        parts.append("% order sorts: lowering rules (difference logic where &diff atoms occur: run with clingo-dl)\n" + "\n".join(theory_rules))
+
     # Allow empty lines between blocks for readability.
     return "\n\n".join(p for p in parts if p.strip()) + "\n"
 
@@ -172,3 +178,33 @@ def _parse_asp_to_clingo_ast(source: str) -> list[clingo.ast.AST]:
 
     clingo.ast.parse_string(source, on_ast)
     return nodes
+
+
+def run_clingodl_source(
+    source: str,
+    *,
+    extra_files: list[str] | None = None,
+    arguments: list[str] | None = None,
+    on_model: Callable[[Any], None] | None = None,
+) -> Any:
+    """Execute a program with ``&diff`` atoms under clingo-dl (the order-sort lowering)."""
+    try:
+        from clingodl import ClingoDLTheory
+    except ImportError as e:  # pragma: no cover
+        raise TranspileError("The program uses order sorts (difference logic); install clingo-dl (pip install clingo-dl)") from e
+    thy = ClingoDLTheory()
+    ctl = clingo.Control(arguments or [])
+    thy.register(ctl)
+    with clingo.ast.ProgramBuilder(ctl) as builder:
+        clingo.ast.parse_string(source, lambda stm: thy.rewrite_ast(stm, builder.add))
+    for path in (extra_files or []):
+        ctl.load(path)
+    ctl.ground([("base", [])])
+    thy.prepare(ctl)
+
+    def _on_model(m):
+        thy.on_model(m)
+        if on_model is not None:
+            on_model((m, [(str(k), v) for k, v in thy.assignment(m.thread_id)]))
+
+    return ctl.solve(on_model=_on_model)

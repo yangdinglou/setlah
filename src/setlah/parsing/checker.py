@@ -73,6 +73,8 @@ class SemanticChecker:
         self.domains: Dict[str, DomainInfo] = {}
         self.predicates: Dict[str, PredicateInfo] = {}
         self.constants: Dict[str, Tuple[str, Optional[Any]]] = {}  # name -> (type, value)
+        self.order_sorts: Dict[str, Tuple[int, int]] = {}   # OrdDOM name -> (lo, hi)
+        self.functions: Dict[str, Tuple[List[str], str]] = {}   # Fun name -> (argument sorts, order sort)
         self.errors: List[str] = []
         self.warnings: List[str] = []
         self.current_block_idx = 0
@@ -147,6 +149,25 @@ class SemanticChecker:
                 is_external=True  # Domain predicates are implicitly external/built-in
             )
         
+        elif isinstance(decl, nodes.OrdDOM):
+            domain_name = decl.var.name
+            self.domains[domain_name] = DomainInfo(name=domain_name, type_def=nodes.IntType(), values=nodes.IntRange(start=decl.lo, end=decl.hi))
+            self.order_sorts[domain_name] = (int(decl.lo.value), int(decl.hi.value))
+            self.predicates[f"dom_{domain_name}"] = PredicateInfo(name=f"dom_{domain_name}", arity=1, arg_types=[domain_name], is_external=True)
+
+        elif isinstance(decl, nodes.FunDecl):
+            arg_types = []
+            for elem in decl.args:
+                if elem.name in self.domains:
+                    arg_types.append(elem.name)
+                else:
+                    self.errors.append(f"Function {decl.name.name}: unknown domain '{elem.name}'")
+                    arg_types.append("UNKNOWN")
+            if decl.result.name not in self.order_sorts:
+                self.errors.append(f"Function {decl.name.name}: result sort '{decl.result.name}' is not an OrdDOM")
+            self.functions[decl.name.name] = (arg_types, decl.result.name)
+            self.predicates[decl.name.name] = PredicateInfo(name=decl.name.name, arity=len(arg_types) + 1, arg_types=arg_types + [decl.result.name], is_external=True)
+
         elif isinstance(decl, nodes.ExtPred):
             # Extract types from tuple_var
             arg_types = []

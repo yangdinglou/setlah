@@ -85,6 +85,21 @@ class ExtDOM(DomainDecl):
     dtype: TypeNode
     input_var: Variable
 @dataclass
+class OrdDOM(DomainDecl):
+    """An order sort: integers in [lo, hi], used only in comparisons (docs/order-sorts.md)."""
+    var: Variable
+    lo: Constant
+    hi: Constant
+
+@dataclass
+class FunDecl(DomainDecl):
+    """A total function from finite sorts into an order sort, written as a predicate
+    with the value as its last argument."""
+    name: Identifier
+    args: List[Variable]
+    result: Variable
+
+@dataclass
 class ExtPred(DomainDecl):
     name: Identifier
     tuple_var: TupleVar

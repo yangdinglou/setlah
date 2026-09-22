@@ -17,6 +17,13 @@ Const n: INT = 4.
 - `DefDOM` defines a domain in the source program.
 - `ExtPred` declares a predicate supplied by an input fact file.
 - `Const` declares a constant.
+- `OrdDOM X: 0..15.` declares an order sort: a bounded integer sort whose
+  values occur only in comparisons and constant offsets; `Fun f: (Q, S) -> X.`
+  declares a total function into it, written in models as the predicate
+  `f(Q, S, X)`. Order sorts are lowered to difference logic (run under clingo-dl,
+  chosen automatically) or, with `--order-lowering rel` (per sort:
+  `X=rel,C=dl`), to a preorder relation in plain ASP; see
+  `docs/order-sorts.md`.
 
 ## Rules
 

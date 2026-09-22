@@ -29,6 +29,7 @@ from .desugar import _desugar_subset_with_let
 from ..transpile.ir import IRRule, IRConstraint, LoweredBlock, TranspileError
 from ..transpile.rendering import _general_lit_to_body_lit
 from . import pyir
+from .order import OrderLowering, _Conj
 from .formula import (
     AggA, And, CompA, Const, Exists, Forall, Lit, NNFBuilder, Or, PredA,
     all_vars, dnf, dnf_size, free_vars, make_and, make_or, negate, negate_comp, var_occurrences,
@@ -74,14 +75,36 @@ class DirectLowerer:
     #: auxiliary predicates instead of being distributed.
     MAX_DNF_CUBES = 32
 
-    def __init__(self, verbose: bool = False, *, entailment_elim: str = "asp", enable_cost_conversion: bool = False):
+    def __init__(self, verbose: bool = False, *, entailment_elim: str = "asp", enable_cost_conversion: bool = False, order_lowering: str | None = None):
         self.verbose = verbose
+        self.order_modes = self._parse_order_modes(order_lowering)
         self.entailment_elim = entailment_elim
         self.checker: SemanticChecker | None = None
         self.builder: NNFBuilder | None = None
         self.aux_rules: list[str] = []
         self._next_aux = 0
         self._var_types: dict[str, str] = {}
+        self.order: OrderLowering | None = None
+
+    @staticmethod
+    def _parse_order_modes(spec: str | None) -> dict[str, str]:
+        """``dl`` / ``rel`` for every order sort, or ``X=rel,C=dl`` per sort (``*`` for the rest)."""
+        import os
+        spec = spec or os.environ.get("SETLAH_ORDER_LOWERING") or "dl"
+        modes: dict[str, str] = {}
+        for part in spec.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "=" in part:
+                sort, mode = part.split("=", 1)
+                modes[sort.strip()] = mode.strip()
+            else:
+                modes["*"] = part
+        for mode in modes.values():
+            if mode not in ("dl", "rel"):
+                raise TranspileError(f"Unknown order-sort lowering {mode!r} (dl or rel)")
+        return modes
 
     # --- program / block -----------------------------------------------------
 
@@ -103,7 +126,15 @@ class DirectLowerer:
 
         self.aux_rules = []
         self._next_aux = 0
+        self.order = None
+        if getattr(self.checker, "functions", None):
+            checker = self.checker
+            self.order = OrderLowering(dict(checker.functions), dict(checker.order_sorts), lambda v: None, self.order_modes)
         program.blocks = [self.lower_block(block) for block in program.blocks]
+        if self.order is not None:
+            program._theory_rules = list(self.order.theory_rules) + self.order.finalize()  # type: ignore[attr-defined]
+        elif hasattr(program, "_theory_rules"):
+            delattr(program, "_theory_rules")
         projections = self.domain_projections(program)
         if projections and program.blocks:
             first = program.blocks[0]
@@ -153,7 +184,7 @@ class DirectLowerer:
         constraints: list[IRConstraint] = []
         for stmt in block.statements:
             if isinstance(stmt, nodes.Rule):
-                rules.append(self.lower_rule(stmt))
+                rules.extend(self.lower_rules(stmt))
             elif isinstance(stmt, nodes.SetConstraint):
                 constraints.extend(self.lower_constraint(stmt))
             else:
@@ -197,6 +228,42 @@ class DirectLowerer:
         return pyir.general_agg(a.op, body, comp, self.term(a.value))
 
     # --- rules ----------------------------------------------------------------
+
+    def lower_rules(self, stmt: nodes.Rule) -> list[IRRule]:
+        if self.order is None:
+            return [self.lower_rule(stmt)]
+        if stmt.head.predicate.name in self.order.functions:
+            raise TranspileError(f"Order sorts: {stmt.head.predicate.name} is a Fun and cannot be defined by a rule")
+        var_types = self._var_types_of_body(stmt.body)
+        head = pyir.atom_pred(stmt.head.predicate.name, [self.term(t) for t in stmt.head.args])
+        out = []
+        for cube in self.order.rewrite_rule_body(stmt.body, var_types):
+            body = [pyir.formula_lit(self.literal(it.atom, it.positive)) for it in self._flatten(cube)]
+            out.append(IRRule(head=head, body=body, is_choice=bool(stmt.is_choice)))
+        return out
+
+    def _var_types_of_body(self, body: list) -> dict[str, str]:
+        assert self.checker is not None
+        types: dict[str, str] = {}
+        for lit in body:
+            if isinstance(lit, nodes.PredAtom):
+                info = self.checker.predicates.get(lit.predicate.name)
+                if info is None:
+                    continue
+                for t, ty in zip(lit.args, info.arg_types):
+                    if isinstance(t, nodes.Variable) and ty not in ("UNKNOWN", "CONST"):
+                        types.setdefault(t.name, ty)
+        return types
+
+    @staticmethod
+    def _flatten(cube: list) -> list:
+        out = []
+        for it in cube:
+            if isinstance(it, _Conj):
+                out.extend(it)
+            else:
+                out.append(it)
+        return out
 
     def lower_rule(self, stmt: nodes.Rule) -> IRRule:
         head = pyir.atom_pred(stmt.head.predicate.name, [self.term(t) for t in stmt.head.args])
@@ -248,7 +315,10 @@ class DirectLowerer:
         violation = peel_existentials(violation)
         violation = self._bound(violation)
         out: list[IRConstraint] = []
-        for cube in dnf(violation):
+        cubes = dnf(violation)
+        if self.order is not None:
+            cubes = [self._flatten(c) for cube in cubes for c in self.order.rewrite_cube(cube, self._var_types)]
+        for cube in cubes:
             lits = [self.item(it) for it in cube]
             if not lits:
                 # the constraint is unsatisfiable: an always-violated integrity constraint
