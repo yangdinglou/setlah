@@ -253,12 +253,16 @@ enabled with `--ext dl` (or `SETLAH_EXT=dl`) and never imported otherwise.
 - Extension (`ext/dl.py`): the reified comparison Booleans with their
   `&diff` rules, the ranges as theory bounds, and `run_source` for
   clingo-dl (T4); the CLI's `--backend auto` uses it when `&diff` atoms
-  occur. A Boolean's guard is the cube's fact literals (external
-  predicates and `dom_` atoms), taken greedily until the Boolean's
-  variables are bound; a literal over a chosen or defined predicate is
-  used only for a variable no fact literal binds, since it would otherwise
-  multiply the theory rules by its models (TSN's queue choice: 64 copies of
-  every isolation rule, s64 from 27 s to 4 s once excluded).
+  occur. A Boolean's guard is the cube's deterministic literals (external
+  predicates, `dom_` atoms, and predicates that non-choice rules derive
+  from them, a fixpoint computed in `lower.py`), taken greedily until the
+  Boolean's variables are bound; a variable none of them binds gets a
+  domain atom. A chosen literal is never a guard: as a binding it
+  multiplies the theory rules by its models (TSN's queue choice: 64 copies
+  of every isolation rule, s64 from 27 s to 4 s once excluded), and as a
+  condition it ties the Boolean's existence to the choice, which cost the
+  DPQA model 20x (0.96 s against 19.4 s on the 10-qubit graph at 4 stages
+  when `a(Q, S)` guarded the column comparisons).
 
 ### First version, as implemented before the split
 

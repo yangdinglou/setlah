@@ -3,8 +3,9 @@
 ## Unreleased (branch order-sorts)
 
 - Difference-logic extension: reified comparison Booleans are guarded by the
-  cube's fact literals only (greedy binding); chosen or defined literals no
-  longer multiply the theory rules. `(\acyclic r)` inlines a defining rule
+  cube's deterministic literals (facts and what non-choice rules derive from
+  them, greedy binding) or by domain atoms, never by a chosen literal, which
+  multiplied the theory rules (TSN) or tied the Boolean to the choice (DPQA). `(\acyclic r)` inlines a defining rule
   into `#edge` only when it projects nothing away.
 - The renderer drops the `dom_S` projections (B14) of every sort no rule
   mentions; over a 435,000-event fact table they were 11 s of grounding.
