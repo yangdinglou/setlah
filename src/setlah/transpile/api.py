@@ -7,6 +7,7 @@ Entry points for transpilation and execution.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
@@ -125,7 +126,23 @@ def transpile_program_to_asp(program: Any, *, grounding: bool = False) -> str:
         parts.append("% lowering rules: order sorts, acyclicity (docs/order-sorts.md)\n" + "\n".join(theory_rules))
 
     # Allow empty lines between blocks for readability.
-    return "\n\n".join(p for p in parts if p.strip()) + "\n"
+    text = "\n\n".join(p for p in parts if p.strip()) + "\n"
+    sorts = getattr(program, "_projection_sorts", None)
+    return _drop_unused_projections(text, sorts) if sorts else text
+
+
+_PROJECTION = re.compile(r"^dom_(\w+)\(X\) :- [a-z_]\w*\((?:X|_)(?:, (?:X|_))*\)\.$")
+
+
+def _drop_unused_projections(text: str, sorts: set) -> str:
+    """Remove the ``dom_S(X) :- p(.., X, ..)`` projections of every sort ``S`` whose
+    ``dom_S`` no other line of the program mentions (see
+    ``DirectLowerer.domain_projections``)."""
+    lines = text.split("\n")
+    proj = {i: m.group(1) for i, l in enumerate(lines) if (m := _PROJECTION.match(l)) and m.group(1) in sorts}
+    rest = "\n".join(l for i, l in enumerate(lines) if i not in proj)
+    unused = {s for s in set(proj.values()) if f"dom_{s}(" not in rest}
+    return "\n".join(l for i, l in enumerate(lines) if proj.get(i) not in unused)
 
 
 def transpile_program_to_clingo(

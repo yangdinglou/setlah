@@ -193,11 +193,15 @@ class DirectLowerer:
         predicates over it left ``dom_S`` undefined and every guarded rule
         dead (docs/known-issues.md, B14). The projections define ``dom_S`` as
         the sort's active domain; with well-typed ``dom_S`` facts they add
-        nothing.
+        nothing. The renderer drops the projections of a sort whose ``dom_S``
+        no other rule mentions (``transpile_program_to_asp``): over a large
+        fact table they are pure grounding cost (deadlock traces of 435,000
+        events: 31 projections, 11 s).
         """
         assert self.checker is not None
         ext_sorts = {d.var.name for d in program.domains if isinstance(d, nodes.ExtDOM)}
         rules: list[IRRule] = []
+        sorts: set[str] = set()
         for decl in program.domains:
             if not isinstance(decl, nodes.ExtPred):
                 continue
@@ -207,10 +211,12 @@ class DirectLowerer:
             for i, sort in enumerate(info.arg_types):
                 if sort not in ext_sorts:
                     continue
+                sorts.add(sort)
                 args = [pyir.term_var("X") if j == i else pyir.term_anon() for j in range(info.arity)]
                 head = pyir.atom_pred(f"dom_{sort}", [pyir.term_var("X")])
                 body = pyir.formula_lit(pyir.general_lit(pyir.literal(pyir.atom_pred(info.name, args), True)))
                 rules.append(IRRule(head=head, body=[body], is_choice=False))
+        program._projection_sorts = sorts  # type: ignore[attr-defined]
         return rules
 
     def lower_block(self, block: nodes.Block) -> LoweredBlock:
