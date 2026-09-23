@@ -86,7 +86,7 @@ Two remarks that the study fixed empirically:
   that difference logic gave on Pusharoo is a remark about a fifth, relaxed
   reading, not part of this design.
 
-## 4. The two lowerings (and, in the appendix, the alternatives)
+## 4. The lowerings: the core (`L_enum`, `L_rel`), the extension (`L_dl`), and the alternatives
 
 Each `L_k` maps `M` to an ASP program (possibly with theory atoms) such that
 the answer sets of `L_k(M) ∪ F`, for a fact file `F`, correspond to the models
@@ -97,7 +97,7 @@ of `M` over `F`. Write `f(a) = x` for the functional atom `f(a, x)`.
 a comparison `(op t1 t2 + c)` is a grounded literal `X1 op X2 + c` in the
 rule or constraint where `t1 = f(a) = X1`, `t2 = g(b) = X2` are joined.
 
-**(Appendix A) L_rel (relation).** No values. For each order sort and each *frame* (5.2)
+**L_rel (relation, core).** No values. For each order sort and each *frame* (5.2)
 a chosen binary relation `le_O(e1, e2)` over the ground functional terms `e`
 of the sort, with axioms: reflexivity, totality (`le(e1,e2) ∨ le(e2,e1)`),
 transitivity (`:- le(a,b), le(b,c), not le(a,c)`), and the range as a bound
@@ -124,11 +124,10 @@ and `f` are dropped and the constraint becomes `#edge (A, B) : R(A, B)`.
 
 ## 5. Theorems (statements with proof sketches)
 
-The paper claims T0, T1 and T4 (basic lowering, difference-logic extension)
-and T6 for the selection; T2 is now implemented as well (`L_rel`, the
-same model lowered relationally) and can stand in the paper as the second
-lowering if the story prefers a pure-ASP alternative to the theory; T3 and
-T5 remain appendix material.
+The paper claims T0, T1 and T2 for the core (enumeration and the
+relational lowering of the one semantics), T4 for the difference-logic
+extension, and T6 for the selection; T3 (ladder) and T5 (edge, with the
+inlining lemma of Section 11) remain appendix material.
 
 Notation: `Mod(M, F)` the models of `M` over facts `F`; `AS(P)` the answer
 sets of `P`; `π` the projection of an answer set to the relational
@@ -196,16 +195,25 @@ acyclicity of the chosen `R` exactly.
 every order sort of `M`, then `L_k(M)` is a correct lowering by T1 to T5.
 The conditions are syntactic and decided on the model text.
 
-## 6. The selection rule (paper version: two lowerings)
+## 6. The selection rule
 
-The compiler uses `L_dl` for an order sort whose uses are comparisons and
-constant offsets only, and `L_enum` otherwise (values as arguments of
-relations over the sort, sums, aggregates). The full table below records
-the alternatives and the evidence for each; only the first two rows and the
-`L_enum` row are in the paper's rule.
+The core selects `L_rel` for an order sort whose uses are plain
+comparisons between its terms, and `L_enum` otherwise (values as arguments
+of relations over the sort, sums of two values, products, aggregates).
+With the extension enabled, a sort that `L_rel` refuses because a
+comparison carries an offset, a constant or a distance is retried as
+`L_dl` before the fallback to `L_enum` (`auto` in `lowering/lower.py`;
+`--order-lowering X=dl` forces the theory for one sort). The rule decides
+on the model text alone, so it prefers the theory-free lowering wherever
+it applies and uses the theory only where the relation cannot express the
+comparison; it does not see the frame size, which is a property of the
+fact file, and the DPQA one-file table (`ports/dpqa/run-ordsorts`) is the
+measurement of what that costs where `L_dl` would have been faster.
 
-For each order sort `O` of `M`, in this order, choose the first lowering whose
-condition holds:
+The full table lists every lowering the study measured, in order of
+preference when all conditions were decidable, with the evidence for each;
+`L_edge` is not chosen for an order sort but reached through `(\acyclic r)`,
+and `L_lad` is kept as an option:
 
 | lowering | condition on the uses of `O` in `M` | evidence |
 |---|---|---|
@@ -568,3 +576,17 @@ the connection to order sorts is that a strict total order `f` with
 shorter than the range, so the "integer positions" encoding of the SMT
 baselines is `L_enum` or `L_dl` of a sort whose only use is that constraint,
 and `#edge` is the lowering that drops the sort.
+
+*Inlining lemma.* Let `r` be defined only by rules `r(t_i) :- B_i` (no
+choice, no negation, `r` in no other head) and occur nowhere else in the
+program. In every stable model `M`, `r^M = ∪_i { t_i σ : B_i σ ⊆ M }`, since
+`r`'s atoms are supported only by these rules and constrain nothing else.
+Hence `#edge (t_i) : B_i.` for each `i` denotes the same edge set as
+`#edge (X, Y) : r(X, Y).` and the two programs have the same stable models.
+The compiler takes the inlined form only when every variable of `B_i`
+occurs in `t_i`: then each edge is presented to the propagator once, as in
+the materialised form; a projecting rule presents it once per binding of
+the projected variables, which is correct but was measured slower (Cobra's
+`edge(A, B) :- pick(C, K), alt(C, K, A, B)`, 3.5 s against 1.9 s), while the
+three layered rules of the snapshot-isolation model are projection-free
+and their inlined form matches the hand-attached program.
