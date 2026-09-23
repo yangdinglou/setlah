@@ -227,7 +227,27 @@ Threads are orthogonal: the study's rule (`corpus/parallelism.md`) is to
 report 1 and 8 and to try heuristics only where the 8-thread gain exceeds
 about three times and the time is in solving.
 
-## 7. Compiler mechanics (implemented 2026-09-23 on branch `order-sorts`, first version)
+## 7. Compiler mechanics (implemented 2026-09-23 on branch `order-sorts`)
+
+**Structure (owner's decision, 2026-09-23): the pure-ASP lowerings are the
+core and are merged; difference logic is an extension** (`setlah.ext.dl`),
+since it is a different system (clingo-dl), with its own admissibility
+check (the comparison must normalise to `x - y <= c`) and its own runner,
+enabled with `--ext dl` (or `SETLAH_EXT=dl`) and never imported otherwise.
+
+- Core (`lowering/order.py`): `enum`, the basic lowering (`dom_S(lo..hi)`,
+  each `Fun` as an exactly-one choice, comparisons grounded: T1); `rel`,
+  the preorder lowering (T2); and the selection rule `auto` (T6): try the
+  relation, retry a sort as `dl` when a comparison needs an offset, a
+  constant or a distance and the extension is enabled, else as `enum`;
+  a sort whose values occur outside comparisons, in a sum of two values,
+  or under multiplication goes to `enum`.
+- Extension (`ext/dl.py`): the reified comparison Booleans with their
+  `&diff` rules, the ranges as theory bounds, and `run_source` for
+  clingo-dl (T4); the CLI's `--backend auto` uses it when `&diff` atoms
+  occur.
+
+### First version, as implemented before the split
 
 Implemented: `OrdDOM X: lo..hi.` and `Fun f: (S1, ..., Sn) -> X.` in the
 grammar, AST, transformer and checker (`checker.order_sorts`,

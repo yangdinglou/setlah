@@ -20,9 +20,11 @@ Const n: INT = 4.
 - `OrdDOM X: 0..15.` declares an order sort: a bounded integer sort whose
   values occur only in comparisons and constant offsets; `Fun f: (Q, S) -> X.`
   declares a total function into it, written in models as the predicate
-  `f(Q, S, X)`. Order sorts are lowered to difference logic (run under clingo-dl,
-  chosen automatically) or, with `--order-lowering rel` (per sort:
-  `X=rel,C=dl`), to a preorder relation in plain ASP; see
+  `f(Q, S, X)`. Order sorts are lowered in plain ASP by enumeration (`enum`, the basic
+  lowering) or as a preorder relation (`rel`, chosen automatically when
+  every comparison is between two values without offsets), and, with the
+  extension `--ext dl`, to difference logic under clingo-dl
+  (`--order-lowering` selects per sort: `X=rel,C=dl`); see
   `docs/order-sorts.md`.
 
 ## Rules

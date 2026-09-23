@@ -40,9 +40,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--clingo-arg", action="append", default=[], help="Extra argument passed to clingo (repeatable)")
     ap.add_argument(
+        "--ext",
+        action="append",
+        default=[],
+        help="Enable an extension (repeatable): dl, difference logic for order sorts under clingo-dl; default from SETLAH_EXT",
+    )
+    ap.add_argument(
         "--order-lowering",
         default=None,
-        help="Lowering of order sorts: auto (default: a preorder relation where every comparison is between two values without offsets, difference logic otherwise), dl, rel, or per sort as X=rel,C=dl; "
+        help="Lowering of order sorts: auto (default: a preorder relation where every comparison is between two values without offsets; otherwise difference logic with --ext dl, else enumeration), enum, rel, dl, or per sort as X=rel,C=dl; "
         "the default can be set with SETLAH_ORDER_LOWERING",
     )
     ap.add_argument(
@@ -94,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     front_kwargs = dict(verbose=args.verbose, entailment_elim=args.entailment_elim, enable_cost_conversion=args.cost_conversion)
     if args.lowering == "direct":
         front_kwargs["order_lowering"] = args.order_lowering
+        exts = [x for part in args.ext for x in part.split(",") if x] or [x for x in os.environ.get("SETLAH_EXT", "").split(",") if x]
+        front_kwargs["extensions"] = tuple(exts)
     rw = front(**front_kwargs)
     if args.verbose:
         rewritten = rw.rewrite_program(program, convert_only=False)

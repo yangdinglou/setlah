@@ -2,7 +2,7 @@
 
 ## Unreleased (branch order-sorts)
 
-- Order sorts: `OrdDOM` and `Fun` declarations, the difference-logic lowering (`lowering/order.py`), the theory section in the emitted ASP, `run_clingodl_source` and the CLI `--backend` option; the relational lowering (`--order-lowering rel`, per sort) as a second lowering of the same declarations, and `auto` (the default) applying the selection rule: relational where admissible, difference logic only where a comparison needs it; design and theorems in `docs/order-sorts.md`.
+- Order sorts: `OrdDOM` and `Fun` declarations with two core lowerings in plain ASP, enumeration (`enum`, the basic one) and a preorder relation (`rel`), the selection rule as the default (`auto`), and difference logic as an extension (`--ext dl`, `setlah.ext.dl`, run under clingo-dl through `--backend auto`); `--order-lowering` selects per sort (`X=rel,C=dl`); design and theorems in `docs/order-sorts.md`.
 
 All notable changes to SetLaH will be documented in this file.
 

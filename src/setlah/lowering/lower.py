@@ -29,7 +29,7 @@ from .desugar import _desugar_subset_with_let
 from ..transpile.ir import IRRule, IRConstraint, LoweredBlock, TranspileError
 from ..transpile.rendering import _general_lit_to_body_lit
 from . import pyir
-from .order import OrderLowering, NeedsTheory, _Conj
+from .order import OrderLowering, NeedsOther, _Conj
 from .formula import (
     AggA, And, CompA, Const, Exists, Forall, Lit, NNFBuilder, Or, PredA,
     all_vars, dnf, dnf_size, free_vars, make_and, make_or, negate, negate_comp, var_occurrences,
@@ -75,9 +75,11 @@ class DirectLowerer:
     #: auxiliary predicates instead of being distributed.
     MAX_DNF_CUBES = 32
 
-    def __init__(self, verbose: bool = False, *, entailment_elim: str = "asp", enable_cost_conversion: bool = False, order_lowering: str | None = None):
+    def __init__(self, verbose: bool = False, *, entailment_elim: str = "asp", enable_cost_conversion: bool = False, order_lowering: str | None = None, extensions: tuple[str, ...] | None = None):
         self.verbose = verbose
         self.order_modes = self._parse_order_modes(order_lowering)
+        import os
+        self.extensions = tuple(extensions) if extensions is not None else tuple(x for x in os.environ.get("SETLAH_EXT", "").split(",") if x)
         self.entailment_elim = entailment_elim
         self.checker: SemanticChecker | None = None
         self.builder: NNFBuilder | None = None
@@ -102,8 +104,8 @@ class DirectLowerer:
             else:
                 modes["*"] = part
         for mode in modes.values():
-            if mode not in ("dl", "rel", "auto"):
-                raise TranspileError(f"Unknown order-sort lowering {mode!r} (auto, dl or rel)")
+            if mode not in ("auto", "enum", "rel", "dl"):
+                raise TranspileError(f"Unknown order-sort lowering {mode!r} (auto, enum, rel or dl)")
         return modes
 
     # --- program / block -----------------------------------------------------
@@ -130,29 +132,36 @@ class DirectLowerer:
         checker = self.checker
         if getattr(checker, "functions", None):
             # The selection rule (docs/order-sorts.md, T6): a sort is lowered relationally
-            # when all its comparisons are between two values without offsets, and in
-            # difference logic otherwise; "auto" tries the relation first and retries a
-            # sort as dl when a comparison needs the theory.
+            # when all its comparisons are between two values without offsets; a sort that
+            # needs an offset, a constant or a distance goes to dl when that extension is
+            # enabled and to enumeration otherwise; a sort whose values occur outside
+            # comparisons goes to enumeration. "auto" tries the relation first and retries
+            # a sort with the lowering the failure names.
             modes = {s_: self.order_modes.get(s_, self.order_modes.get("*", "auto")) for s_ in checker.order_sorts}
+            trial = {s_: ("rel" if m == "auto" else m) for s_, m in modes.items()}
             blocks = list(program.blocks)
             while True:
-                trial = {s_: ("rel" if m == "auto" else m) for s_, m in modes.items()}
                 self.aux_rules = []
                 self._next_aux = 0
-                self.order = OrderLowering(dict(checker.functions), dict(checker.order_sorts), lambda v: None, trial)
+                self.order = OrderLowering(dict(checker.functions), dict(checker.order_sorts), lambda v: None, trial, self.extensions)
                 try:
                     lowered = [self.lower_block(block) for block in blocks]
                     break
-                except NeedsTheory as e:
+                except NeedsOther as e:
                     if modes.get(e.sort) != "auto":
                         raise
-                    modes[e.sort] = "dl"
+                    want = e.want
+                    if want == "dl" and "dl" not in self.extensions:
+                        want = "enum"
+                    if trial[e.sort] == want or (trial[e.sort] == "dl" and want == "enum"):
+                        raise
+                    trial[e.sort] = want
             program.blocks = lowered
             program._order_modes = dict(trial)  # type: ignore[attr-defined]
         else:
             program.blocks = [self.lower_block(block) for block in program.blocks]
         if self.order is not None:
-            program._theory_rules = list(self.order.theory_rules) + self.order.finalize()  # type: ignore[attr-defined]
+            program._theory_rules = self.order.finalize()  # type: ignore[attr-defined]
         elif hasattr(program, "_theory_rules"):
             delattr(program, "_theory_rules")
         projections = self.domain_projections(program)

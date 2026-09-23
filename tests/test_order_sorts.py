@@ -16,10 +16,13 @@ from setlah.transpile import transpile_program_to_asp, run_clingodl_source
 HERE = os.path.join(os.path.dirname(__file__), "inputs", "order")
 
 
-def compile_sl(name, order_lowering="dl"):
+DL = ("dl",)
+
+
+def compile_sl(name, order_lowering="dl", extensions=DL):
     """Compile with an explicit lowering (the default selection is tested on its own)."""
     program = Parser().parse(open(os.path.join(HERE, name)).read())
-    DirectLowerer(order_lowering=order_lowering).rewrite_program(program)
+    DirectLowerer(order_lowering=order_lowering, extensions=extensions).rewrite_program(program)
     return transpile_program_to_asp(program)
 
 
@@ -47,18 +50,34 @@ def test_dpqa_stage_counts():
     assert solve(asp, "dpqa_10_0_s4.lp") is True
 
 
-def test_sum_of_two_values_is_rejected():
+def test_sum_of_two_values_falls_back_to_enumeration():
     src = open(os.path.join(HERE, "strict_order.sl")).read().replace("(< X1 X2)", "(< (+ X1 X2) 3)")
     program = Parser().parse(src)
+    DirectLowerer(extensions=DL).rewrite_program(program)
+    assert program._order_modes == {"X": "enum"}
     with pytest.raises(Exception, match="difference constraint"):
-        DirectLowerer().rewrite_program(program)
-        transpile_program_to_asp(program)
+        DirectLowerer(order_lowering="dl", extensions=DL).rewrite_program(Parser().parse(src))
 
 
-def compile_sl_with(name, order_lowering):
-    program = Parser().parse(open(os.path.join(HERE, name)).read())
-    DirectLowerer(order_lowering=order_lowering).rewrite_program(program)
-    return transpile_program_to_asp(program)
+def compile_sl_with(name, order_lowering, extensions=DL):
+    return compile_sl(name, order_lowering, extensions)
+
+
+def solve_plain(asp, facts):
+    from setlah.transpile import run_clingo_ast, _parse_asp_to_clingo_ast
+    return run_clingo_ast(_parse_asp_to_clingo_ast(asp), extra_files=[os.path.join(HERE, facts)]).satisfiable
+
+
+def test_enumeration_lowering_is_the_basic_one():
+    asp = compile_sl("strict_order.sl", "enum", ())
+    assert "dom_X(0..15)." in asp and "1 { x(A0, V) : dom_X(V) } 1 :- dom_Q(A0)." in asp and "&diff{" not in asp
+    assert solve_plain(asp, "strict_order_chain.lp") is True
+    assert solve_plain(asp, "strict_order_cycle.lp") is False
+
+
+def test_dpqa_enumeration_unsat_at_three_stages():
+    asp = compile_sl("dpqa_two_axes.sl", "enum", ())
+    assert solve_plain(asp, "dpqa_10_0_s3.lp") is False
 
 
 def test_relational_lowering_emits_a_preorder():
@@ -83,8 +102,15 @@ def test_relational_lowering_rejects_offsets():
     src = open(os.path.join(HERE, "strict_order.sl")).read().replace("(< X1 X2)", "(< (+ X1 1) X2)")
     program = Parser().parse(src)
     with pytest.raises(Exception, match="without offsets"):
-        DirectLowerer(order_lowering="rel").rewrite_program(program)
+        DirectLowerer(order_lowering="rel", extensions=DL).rewrite_program(program)
         transpile_program_to_asp(program)
+
+
+def test_offsets_go_to_enumeration_without_the_extension():
+    src = open(os.path.join(HERE, "strict_order.sl")).read().replace("(< X1 X2)", "(< (+ X1 1) X2)")
+    program = Parser().parse(src)
+    DirectLowerer(extensions=()).rewrite_program(program)
+    assert program._order_modes == {"X": "enum"}
 
 
 def test_dpqa_mixed_lowerings_agree():
@@ -97,7 +123,7 @@ def test_dpqa_mixed_lowerings_agree():
 
 def test_automatic_selection_prefers_the_relation_and_uses_theory_only_where_needed():
     program = Parser().parse(open(os.path.join(HERE, "dpqa_two_axes.sl")).read())
-    DirectLowerer().rewrite_program(program)
+    DirectLowerer(extensions=DL).rewrite_program(program)
     assert program._order_modes == {"X": "rel", "Y": "rel", "C": "dl"}
     asp = transpile_program_to_asp(program)
     assert "__le_X(" in asp and "__le_Y(" in asp and "&diff{ c(" in asp and "&diff{ x(" not in asp
