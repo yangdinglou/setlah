@@ -141,9 +141,10 @@ class OrderLowering:
         if not binding:
             return [cube]
         cubes: list[list] = [[]]
+        context = [it for it in rest if isinstance(it, Lit) and it.positive and isinstance(it.atom, PredA)]
         for it in rest:
             if isinstance(it, Lit) and isinstance(it.atom, CompA) and self._mentions(it.atom, binding):
-                alternatives = self.compare(it.atom, it.positive, binding, bound_args, var_types)
+                alternatives = self.compare(it.atom, it.positive, binding, bound_args, var_types, context)
                 cubes = [c + [alt] for c in cubes for alt in alternatives]
             else:
                 touched = [v for v in self._vars(it) if v in binding]
@@ -174,7 +175,7 @@ class OrderLowering:
 
     # --- comparisons --------------------------------------------------------------
 
-    def compare(self, comp: CompA, positive: bool, binding: dict, bound_args: dict, var_types: dict) -> list:
+    def compare(self, comp: CompA, positive: bool, binding: dict, bound_args: dict, var_types: dict, context: list = ()) -> list:
         left, right = self._linear(comp.left, binding), self._linear(comp.right, binding)
         net: dict = dict(left.coeffs)
         for v, k in right.coeffs.items():
@@ -206,7 +207,7 @@ class OrderLowering:
         else: raise TranspileError(f"Order sorts: unsupported comparison {op}")
         out = []
         for conj in alts:
-            lits = [self.dl.reified(x_, y_, c_, True, binding, bound_args, var_types) for x_, y_, c_ in conj]
+            lits = [self.dl.reified(x_, y_, c_, True, binding, bound_args, var_types, [self._lit_text(l) for l in context]) for x_, y_, c_ in conj]
             out.append(_Conj(lits) if len(lits) > 1 else lits[0])
         return out
 
@@ -245,6 +246,10 @@ class OrderLowering:
                 raise NeedsOther(self._sort_of(next(iter(a.coeffs or b.coeffs)), binding), "enum", "Order sorts: a value is multiplied or divided; the sort is lowered by enumeration")
             return LinearTerm({}, f"({a.const} {t.op} {b.const})")
         raise TranspileError(f"Order sorts: unsupported term {t!r}")
+
+    @classmethod
+    def _lit_text(cls, lit: Lit) -> str:
+        return cls._term_text(lit.atom.name, list(lit.atom.args))
 
     @staticmethod
     def _term_text(f: str, args: list) -> str:

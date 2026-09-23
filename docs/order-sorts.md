@@ -312,11 +312,14 @@ its comparisons carries an offset, a constant or a distance (owner's
 principle, 2026-09-23: the theory is not applied where it is not needed);
 the DPQA test checks that the default yields `X=rel, Y=rel, C=dl`.
 
-Not yet: the enumeration fallback (a sort failing the conditions is an
-error today, not a `DefDOM` lowering), the `L_edge` special case, inference
-of `Fun` from the exactly-one pattern, sharing reified atoms across sites
-(dl) and splitting a sort's preorder by comparison classes (rel), and the
-Lean binding.
+Reified Booleans are guarded by the cube's own binding literals rather
+than by domain products (2026-09-23, after the TSN source model grounded
+`dom_N`³ for the constant-side variables): `{ __dl_k(S, L2, L1, TT, PR, SY) }
+:- hop(S, L1, L2), ttrans(S, TT), lproc(L2, PR), lsync(L2, SY).`
+
+Not yet: inference of `Fun` from the exactly-one pattern, sharing reified
+atoms across sites (dl) and splitting a sort's preorder by comparison
+classes (rel), and the Lean binding.
 
 ### Original plan
 

@@ -37,9 +37,12 @@ class DifferenceLogic:
         self.rules.append(f"&diff{{ {term} }} <= {hi}{body}.")
         self.rules.append(f"&diff{{ {term} }} >= {lo}{body}.")
 
-    def reified(self, x: str | None, y: str | None, c: str, sign: bool, binding: dict, bound_args: dict, var_types: dict) -> Lit:
+    def reified(self, x: str | None, y: str | None, c: str, sign: bool, binding: dict, bound_args: dict, var_types: dict, context: list = ()) -> Lit:
         """Boolean ``__dl_k(vars)`` with  ``__dl_k <-> (x - y <= c)``; ``x``/``y`` are value
-        variables bound to theory terms (None stands for 0), ``c`` a constant expression."""
+        variables bound to theory terms (None stands for 0), ``c`` a constant expression.
+        The Boolean's choice and its converse theory rule are guarded by the cube's own
+        positive literals that bind its variables (``context``), so it is grounded only
+        where the comparison occurs; variables bound by none of them get a domain guard."""
         tx = binding[x] if x else "0"
         ty = binding[y] if y else "0"
         vars_: list[str] = []
@@ -50,7 +53,14 @@ class DifferenceLogic:
         self.next_id += 1
         head = f"__dl_{k}({', '.join(vars_)})" if vars_ else f"__dl_{k}"
         guards = []
+        bound: set = set()
+        for lit in context:
+            lv = set(_vars_of(lit))
+            if lv & set(vars_):
+                guards.append(lit); bound |= lv
         for v in vars_:
+            if v in bound:
+                continue
             s = bound_args.get(v) or var_types.get(v) or self.var_types_of(v)
             if s is None:
                 raise TranspileError(f"Order sorts (dl): cannot determine the sort of variable {v} in a comparison")
