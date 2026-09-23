@@ -147,7 +147,7 @@ class DirectLowerer:
                 self._next_aux = 0
                 self.extra_rules = []
                 self.order = OrderLowering(dict(checker.functions), dict(checker.order_sorts), lambda v: None, trial, self.extensions,
-                                           {n for n, i in checker.predicates.items() if i.is_external})
+                                           self._deterministic_predicates(blocks))
                 try:
                     lowered = [self.lower_block(block) for block in blocks]
                     break
@@ -240,6 +240,29 @@ class DirectLowerer:
     def _collect_term_vars(cls, t: Any, out: set) -> None:
         if isinstance(t, nodes.Variable): out.add(t.name)
         elif isinstance(t, nodes.BinaryExpr): cls._collect_term_vars(t.left, out); cls._collect_term_vars(t.right, out)
+
+    def _deterministic_predicates(self, blocks: list) -> set[str]:
+        """External predicates and those derived from them by non-choice rules only
+        (a fixpoint from below); a predicate with a choice rule, or a rule whose body
+        mentions a non-deterministic predicate, is not deterministic. The reified
+        comparison Booleans of the dl extension are guarded by deterministic literals
+        only (docs/order-sorts.md Section 7)."""
+        assert self.checker is not None
+        det = {n for n, i in self.checker.predicates.items() if i.is_external} | {n for n in self.checker.predicates if n.startswith("dom_")}
+        rules: dict = {}
+        for block in blocks:
+            for st in getattr(block, "statements", []):
+                if isinstance(st, nodes.Rule):
+                    rules.setdefault(st.head.predicate.name, []).append(st)
+        changed = True
+        while changed:
+            changed = False
+            for name, sts in rules.items():
+                if name in det:
+                    continue
+                if all(not st.is_choice and all(not isinstance(l, nodes.PredAtom) or l.predicate.name in det for l in st.body) for st in sts):
+                    det.add(name); changed = True
+        return det
 
     def _acyclic_inlining(self, block: nodes.Block) -> dict:
         """Relations under (\\acyclic r) that are defined only by deterministic rules

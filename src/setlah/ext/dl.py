@@ -37,16 +37,14 @@ class DifferenceLogic:
         self.rules.append(f"&diff{{ {term} }} <= {hi}{body}.")
         self.rules.append(f"&diff{{ {term} }} >= {lo}{body}.")
 
-    def reified(self, x: str | None, y: str | None, c: str, sign: bool, binding: dict, bound_args: dict, var_types: dict, context: list = (),
-                context_weak: list = ()) -> Lit:
+    def reified(self, x: str | None, y: str | None, c: str, sign: bool, binding: dict, bound_args: dict, var_types: dict, context: list = ()) -> Lit:
         """Boolean ``__dl_k(vars)`` with  ``__dl_k <-> (x - y <= c)``; ``x``/``y`` are value
         variables bound to theory terms (None stands for 0), ``c`` a constant expression.
         The Boolean's choice and its converse theory rule are guarded by the cube's own
-        positive fact literals that bind its variables (``context``, greedily, each
-        literal taken only if it binds a variable still unbound), so it is grounded only
-        where the comparison occurs; a literal over a defined or chosen predicate
-        (``context_weak``) is taken only for a variable no fact literal binds, and a
-        variable bound by neither gets a domain guard."""
+        positive deterministic literals that bind its variables (``context``, greedily,
+        each literal taken only if it binds a variable still unbound), so it is grounded
+        only where the comparison occurs; a variable none of them binds gets a domain
+        guard. Chosen literals are never guards (see ``OrderLowering.rewrite_cube``)."""
         tx = binding[x] if x else "0"
         ty = binding[y] if y else "0"
         vars_: list[str] = []
@@ -59,7 +57,7 @@ class DifferenceLogic:
         guards = []
         bound: set = set()
         need = set(vars_)
-        for lit in list(context) + list(context_weak):
+        for lit in context:
             lv = set(_vars_of(lit))
             if lv & (need - bound):
                 guards.append(lit); bound |= lv
