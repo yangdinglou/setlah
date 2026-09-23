@@ -218,7 +218,7 @@ and `L_lad` is kept as an option:
 | lowering | condition on the uses of `O` in `M` | evidence |
 |---|---|---|
 | `L_edge` | one constraint `R(a,b) → f(a) < f(b)`, nothing else; range ≥ domain size | VCh-rf positions: closure in the language 54 s, `#edge` 1.8 s on the largest Cobra polygraph; SI layered acyclicity `ports/isolation/NOTES.md` |
-| `L_dl` | comparisons and constant offsets only (any frame, any bound) | DPQA level with Z3 on all six graphs (`ports/dpqa/run-dl`); Pusharoo 274 of 300 exact; TSN ahead of Z3 to 128 streams (`ports/tsn/run-dl`) |
+| `L_dl` | comparisons and constant offsets only (any frame, any bound) | DPQA at or ahead of Z3 on five of six graphs from the one-file model (`ports/dpqa/run-ordsorts`, shared Booleans); Pusharoo 274 of 300 exact; TSN ahead of Z3 to 128 streams (`ports/tsn/run-dl`) |
 | `L_rel` | comparisons without offsets, elements in one frame, and the frame small (elements ≤ about 100, since transitivity is cubic) | DPQA `run-relorder`: in Z3's band to 18 qubits, 100× one-hot |
 | `L_enum` | values are arguments of relations over the sort, or the sort is small and the model is not search-bound | OLSQ time steps (level with the expert, 60 s → 0.4 s against Z3); every domain of the first three weeks |
 | (`L_lad`) | never selected by default; kept as an option | DPQA: smaller program, slower search on one thread |
@@ -441,6 +441,11 @@ here so the extension work does not leave them behind:
   at 4 stages: 71.8 s per site, 23 s shared, 9.8 s shared with the lemma
   (`--propagate=full` gives 2.0 s to the shared program without the lemma:
   the lemma is what the theory's full propagation would find).
+  The full DPQA table on this snapshot (`ports/dpqa/run-ordsorts` of the
+  applications study): the theory lowering 0.5, 10.0, 2.2, 8.8, 9.8 and
+  19.6 s on graphs 10 to 20 against Z3's 1.4, 19.6, 5.4, 6.0, 10.2 and
+  56.0 s and the hand-written program's 68.9 s on the largest; before
+  sharing it was 1.3, 71.8, 2.9, 4.9, 47.4 s and a timeout.
 - **One-way reification for constraint-only comparisons.** A comparison
   that occurs only under constraints (never in a rule body that derives
   something, never enumerated) needs only the direction "Boolean false
