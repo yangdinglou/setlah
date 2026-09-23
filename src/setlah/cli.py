@@ -42,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--order-lowering",
         default=None,
-        help="Lowering of order sorts: dl (difference logic, default), rel (a preorder relation, pure ASP), or per sort as X=rel,C=dl; "
+        help="Lowering of order sorts: auto (default: a preorder relation where every comparison is between two values without offsets, difference logic otherwise), dl, rel, or per sort as X=rel,C=dl; "
         "the default can be set with SETLAH_ORDER_LOWERING",
     )
     ap.add_argument(

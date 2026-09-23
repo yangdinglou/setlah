@@ -16,9 +16,10 @@ from setlah.transpile import transpile_program_to_asp, run_clingodl_source
 HERE = os.path.join(os.path.dirname(__file__), "inputs", "order")
 
 
-def compile_sl(name):
+def compile_sl(name, order_lowering="dl"):
+    """Compile with an explicit lowering (the default selection is tested on its own)."""
     program = Parser().parse(open(os.path.join(HERE, name)).read())
-    DirectLowerer().rewrite_program(program)
+    DirectLowerer(order_lowering=order_lowering).rewrite_program(program)
     return transpile_program_to_asp(program)
 
 
@@ -92,3 +93,11 @@ def test_dpqa_mixed_lowerings_agree():
     assert "__le_X(" in asp and "__le_Y(" in asp and "&diff{ c(" in asp
     assert solve(asp, "dpqa_10_0_s3.lp") is False
     assert solve(asp, "dpqa_10_0_s4.lp") is True
+
+
+def test_automatic_selection_prefers_the_relation_and_uses_theory_only_where_needed():
+    program = Parser().parse(open(os.path.join(HERE, "dpqa_two_axes.sl")).read())
+    DirectLowerer().rewrite_program(program)
+    assert program._order_modes == {"X": "rel", "Y": "rel", "C": "dl"}
+    asp = transpile_program_to_asp(program)
+    assert "__le_X(" in asp and "__le_Y(" in asp and "&diff{ c(" in asp and "&diff{ x(" not in asp

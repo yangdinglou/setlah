@@ -34,6 +34,15 @@ from ..transpile.ir import TranspileError
 from .formula import CompA, Lit, PredA
 
 
+class NeedsTheory(TranspileError):
+    """A sort lowered relationally met a comparison only difference logic can carry
+    (an offset, a constant, or a distance); the automatic selection retries it as dl."""
+
+    def __init__(self, sort: str, msg: str):
+        super().__init__(msg)
+        self.sort = sort
+
+
 class LinearTerm:
     """``sum coeff_i * V_i + const_expr`` over order-sort variables ``V_i``; the
     difference of two sides is admitted when its net coefficients are one ``+1``
@@ -200,7 +209,7 @@ class OrderLowering:
         """Literals over the sort's preorder ``__le_S`` (no values): admitted only
         for comparisons between two function terms of the sort with no offset."""
         if x is None or y is None or const != "0":
-            raise TranspileError(f"Order sorts: sort {sort} is lowered relationally, which admits only comparisons between two values without offsets; use the difference-logic lowering for it")
+            raise NeedsTheory(sort, f"Order sorts: sort {sort} is lowered relationally, which admits only comparisons between two values without offsets; use the difference-logic lowering for it")
         if self._sort_of(y, binding) != sort:
             raise TranspileError("Order sorts: comparison between values of different sorts")
         le = f"__le_{sort}"

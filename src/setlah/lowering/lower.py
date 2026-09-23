@@ -29,7 +29,7 @@ from .desugar import _desugar_subset_with_let
 from ..transpile.ir import IRRule, IRConstraint, LoweredBlock, TranspileError
 from ..transpile.rendering import _general_lit_to_body_lit
 from . import pyir
-from .order import OrderLowering, _Conj
+from .order import OrderLowering, NeedsTheory, _Conj
 from .formula import (
     AggA, And, CompA, Const, Exists, Forall, Lit, NNFBuilder, Or, PredA,
     all_vars, dnf, dnf_size, free_vars, make_and, make_or, negate, negate_comp, var_occurrences,
@@ -90,7 +90,7 @@ class DirectLowerer:
     def _parse_order_modes(spec: str | None) -> dict[str, str]:
         """``dl`` / ``rel`` for every order sort, or ``X=rel,C=dl`` per sort (``*`` for the rest)."""
         import os
-        spec = spec or os.environ.get("SETLAH_ORDER_LOWERING") or "dl"
+        spec = spec or os.environ.get("SETLAH_ORDER_LOWERING") or "auto"
         modes: dict[str, str] = {}
         for part in spec.split(","):
             part = part.strip()
@@ -102,8 +102,8 @@ class DirectLowerer:
             else:
                 modes["*"] = part
         for mode in modes.values():
-            if mode not in ("dl", "rel"):
-                raise TranspileError(f"Unknown order-sort lowering {mode!r} (dl or rel)")
+            if mode not in ("dl", "rel", "auto"):
+                raise TranspileError(f"Unknown order-sort lowering {mode!r} (auto, dl or rel)")
         return modes
 
     # --- program / block -----------------------------------------------------
@@ -127,10 +127,30 @@ class DirectLowerer:
         self.aux_rules = []
         self._next_aux = 0
         self.order = None
-        if getattr(self.checker, "functions", None):
-            checker = self.checker
-            self.order = OrderLowering(dict(checker.functions), dict(checker.order_sorts), lambda v: None, self.order_modes)
-        program.blocks = [self.lower_block(block) for block in program.blocks]
+        checker = self.checker
+        if getattr(checker, "functions", None):
+            # The selection rule (docs/order-sorts.md, T6): a sort is lowered relationally
+            # when all its comparisons are between two values without offsets, and in
+            # difference logic otherwise; "auto" tries the relation first and retries a
+            # sort as dl when a comparison needs the theory.
+            modes = {s_: self.order_modes.get(s_, self.order_modes.get("*", "auto")) for s_ in checker.order_sorts}
+            blocks = list(program.blocks)
+            while True:
+                trial = {s_: ("rel" if m == "auto" else m) for s_, m in modes.items()}
+                self.aux_rules = []
+                self._next_aux = 0
+                self.order = OrderLowering(dict(checker.functions), dict(checker.order_sorts), lambda v: None, trial)
+                try:
+                    lowered = [self.lower_block(block) for block in blocks]
+                    break
+                except NeedsTheory as e:
+                    if modes.get(e.sort) != "auto":
+                        raise
+                    modes[e.sort] = "dl"
+            program.blocks = lowered
+            program._order_modes = dict(trial)  # type: ignore[attr-defined]
+        else:
+            program.blocks = [self.lower_block(block) for block in program.blocks]
         if self.order is not None:
             program._theory_rules = list(self.order.theory_rules) + self.order.finalize()  # type: ignore[attr-defined]
         elif hasattr(program, "_theory_rules"):

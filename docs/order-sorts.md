@@ -285,7 +285,12 @@ and a timeout at 20), same verdicts wherever decided: the mixed form is
 in the hand-written relational form's band and faster on the larger
 graphs, with the portfolio variance of the 12-qubit instance. So the owner's question is answered in the
 compiler: the fast propositional form and the theory form are two
-lowerings of one source, and the selection is a flag.
+lowerings of one source, and the selection is a flag. The default is the
+selection rule itself (`--order-lowering auto`): every order sort is
+tried relationally first and retried in difference logic only when one of
+its comparisons carries an offset, a constant or a distance (owner's
+principle, 2026-09-23: the theory is not applied where it is not needed);
+the DPQA test checks that the default yields `X=rel, Y=rel, C=dl`.
 
 Not yet: the enumeration fallback (a sort failing the conditions is an
 error today, not a `DefDOM` lowering), the `L_edge` special case, inference
