@@ -488,6 +488,14 @@ class SemanticChecker:
         
         elif isinstance(foset, nodes.SetPartition):
             pass
+
+        elif isinstance(foset, nodes.Acyclic):
+            name = foset.predicate.name
+            info = self.predicates.get(name)
+            if info is None:
+                self.errors.append(f"Block {self.current_block_idx}: Undefined predicate '{name}' in (\\acyclic ...)")
+            elif info.arity == 0 or info.arity % 2:
+                self.errors.append(f"Block {self.current_block_idx}: (\\acyclic {name}) needs a relation of even arity (source node, target node)")
         
         elif isinstance(foset, nodes.Aggregation):
             # Check set variable and expression

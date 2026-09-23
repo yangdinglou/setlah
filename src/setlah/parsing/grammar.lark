@@ -89,6 +89,7 @@ SET_BIN_OP: "∪" | "∩" | "Δ" | "⊕"
 // can be. Keeping the two apart is what lets the grammar run under LALR.
 ?top_foset: quantified_formula
       | aggregation
+      | acyclic
       | logic_op
       | set_membership
       | set_subset
@@ -106,6 +107,10 @@ logic_op: "(" LOGIC_PREFIX foset+ ")"
 ?comparison: infix_comp | prefix_comp
 infix_comp: expr COMP_OP expr
 prefix_comp: "(" COMP_OP expr expr ")"
+
+// The transitive closure of a binary relation (or of a relation over node
+// tuples, arity 2k with the first k arguments the source node) is irreflexive.
+acyclic: "(" "\\acyclic" lower_id ")"
 
 set_membership: "(" "\\belonging" upper_id set_expr ")"
 set_subset: "(" "\\subset" upper_id set_expr ")"

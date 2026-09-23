@@ -87,6 +87,7 @@ class DirectLowerer:
         self._next_aux = 0
         self._var_types: dict[str, str] = {}
         self.order: OrderLowering | None = None
+        self.extra_rules: list[str] = []
 
     @staticmethod
     def _parse_order_modes(spec: str | None) -> dict[str, str]:
@@ -129,6 +130,7 @@ class DirectLowerer:
         self.aux_rules = []
         self._next_aux = 0
         self.order = None
+        self.extra_rules = []
         checker = self.checker
         if getattr(checker, "functions", None):
             # The selection rule (docs/order-sorts.md, T6): a sort is lowered relationally
@@ -143,6 +145,7 @@ class DirectLowerer:
             while True:
                 self.aux_rules = []
                 self._next_aux = 0
+                self.extra_rules = []
                 self.order = OrderLowering(dict(checker.functions), dict(checker.order_sorts), lambda v: None, trial, self.extensions)
                 try:
                     lowered = [self.lower_block(block) for block in blocks]
@@ -160,8 +163,9 @@ class DirectLowerer:
             program._order_modes = dict(trial)  # type: ignore[attr-defined]
         else:
             program.blocks = [self.lower_block(block) for block in program.blocks]
-        if self.order is not None:
-            program._theory_rules = self.order.finalize()  # type: ignore[attr-defined]
+        extra = (self.order.finalize() if self.order is not None else []) + self.extra_rules
+        if extra:
+            program._theory_rules = extra  # type: ignore[attr-defined]
         elif hasattr(program, "_theory_rules"):
             delattr(program, "_theory_rules")
         projections = self.domain_projections(program)
@@ -318,6 +322,17 @@ class DirectLowerer:
             raise TranspileError(
                 "The direct lowering supports Let only in the form Let {A}(...) = {...} in (\\subset A B)"
             )
+
+        if isinstance(formula, nodes.Acyclic):
+            # (\acyclic r): clingo's acyclicity propagator over the relation's edges;
+            # a relation of arity 2k has k-tuples as nodes (the layered SI encoding).
+            assert self.checker is not None
+            info = self.checker.predicates[formula.predicate.name]
+            k = info.arity // 2
+            src = [f"X{i}" for i in range(k)]; dst = [f"Y{i}" for i in range(k)]
+            node = lambda vs: vs[0] if k == 1 else "(" + ", ".join(vs) + ")"
+            self.extra_rules.append(f"#edge ({node(src)}, {node(dst)}) : {formula.predicate.name}({', '.join(src + dst)}).")
+            return []
 
         if isinstance(formula, nodes.SetPartition):
             body = pyir.formula_partition(

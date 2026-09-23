@@ -122,7 +122,7 @@ def transpile_program_to_asp(program: Any, *, grounding: bool = False) -> str:
     # reified comparison Booleans with their &diff atoms and the sorts' ranges.
     theory_rules = getattr(program, "_theory_rules", None)
     if theory_rules:
-        parts.append("% order sorts (docs/order-sorts.md)\n" + "\n".join(theory_rules))
+        parts.append("% lowering rules: order sorts, acyclicity (docs/order-sorts.md)\n" + "\n".join(theory_rules))
 
     # Allow empty lines between blocks for readability.
     return "\n\n".join(p for p in parts if p.strip()) + "\n"

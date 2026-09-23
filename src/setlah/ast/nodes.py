@@ -175,6 +175,12 @@ class SetPred(FoSet):
     predicate: str
     def __repr__(self): return f"Set_{{{self.predicate}}}"
 @dataclass
+class Acyclic(FoSet):
+    """``(\\acyclic r)``: the relation ``r`` has an irreflexive transitive closure (docs/order-sorts.md, Section 10)."""
+    predicate: Identifier
+    def __repr__(self): return f"(acyclic {self.predicate})"
+
+@dataclass
 class BooleanConst(FoSet):
     val: bool
     def __repr__(self): return str(self.val)

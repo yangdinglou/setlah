@@ -99,6 +99,7 @@ class AstTransformer(Transformer):
             res = nodes.QuantifiedFormula(quantifier=q_norm, variable=var, body=res)
         return res
     
+    def acyclic(self, items): return nodes.Acyclic(predicate=items[0])
     def true_const(self, _): return nodes.BooleanConst(val=True)
     def false_const(self, _): return nodes.BooleanConst(val=False)
 

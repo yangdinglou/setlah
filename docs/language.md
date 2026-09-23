@@ -65,6 +65,16 @@ Arithmetic terms can appear in comparisons:
 (= (* 3 X) Y).
 ```
 
+## Acyclicity
+
+```text
+(\acyclic edge).
+```
+
+The transitive closure of the binary relation is irreflexive; lowered to
+clingo's `#edge` propagator. A relation of arity 2k has k-tuples as nodes
+(the first k arguments the source), for layered encodings.
+
 ## Aggregates
 
 Projection variables appear in parentheses after a set predicate:
