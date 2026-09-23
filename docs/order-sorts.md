@@ -433,8 +433,8 @@ here so the extension work does not leave them behind:
   `M` still has a stable model, and every stable model still satisfies the
   constraint). TSNKit's dumped queries use this form for their disjunctions
   and are 1.4x faster at one thread on 128 streams than the faithful form
-  (318 s against 460 s), while the faithful form is ahead to 64 streams and
-  at eight threads (52 s against 201 s). Not applied: T4 is stated for the
+  (318 s against 436 s), while the faithful form is ahead to 64 streams and
+  at eight threads (48 s against 201 s). Not applied: T4 is stated for the
   faithful form, and the one-way form loses the one-to-one correspondence of
   answer sets and models (a Boolean may be true while its comparison holds).
   Candidate for a polarity-aware option with its own lemma.
