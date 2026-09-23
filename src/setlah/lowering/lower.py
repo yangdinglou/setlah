@@ -215,14 +215,66 @@ class DirectLowerer:
     def lower_block(self, block: nodes.Block) -> LoweredBlock:
         rules: list[IRRule] = []
         constraints: list[IRConstraint] = []
+        self._inline_edges = self._acyclic_inlining(block)
         for stmt in block.statements:
             if isinstance(stmt, nodes.Rule):
+                if stmt.head.predicate.name in self._inline_edges:
+                    continue    # emitted as #edge statements by the (\acyclic ...) constraint
                 rules.extend(self.lower_rules(stmt))
             elif isinstance(stmt, nodes.SetConstraint):
                 constraints.extend(self.lower_constraint(stmt))
             else:
                 raise TranspileError(f"Unsupported statement: {stmt!r}")
         return LoweredBlock(rules=rules, constraints=constraints)
+
+    _inline_edges: dict = {}
+
+    def _acyclic_inlining(self, block: nodes.Block) -> dict:
+        """Relations under (\\acyclic r) that are defined only by deterministic rules
+        with predicate-atom and comparison bodies in this block and occur nowhere
+        else: name -> [(head argument texts, body text)] for inlining into #edge."""
+        acyc = {st.formula.predicate.name for st in block.statements if isinstance(st, nodes.SetConstraint) and isinstance(st.formula, nodes.Acyclic)}
+        if not acyc:
+            return {}
+        used: dict = {n: 0 for n in acyc}
+        def count(node):
+            if isinstance(node, nodes.PredAtom):
+                if node.predicate.name in used: used[node.predicate.name] += 1
+            elif isinstance(node, nodes.LogicalOp):
+                for x in node.operands: count(x)
+            elif isinstance(node, nodes.QuantifiedFormula): count(node.body)
+            elif isinstance(node, nodes.SetComprehension): count(node.condition)
+        defs: dict = {n: [] for n in acyc}
+        for st in block.statements:
+            if isinstance(st, nodes.Rule):
+                for lit in st.body:
+                    count(lit) if isinstance(lit, nodes.PredAtom) else None
+                if st.head.predicate.name in acyc:
+                    if st.is_choice or not st.body or not all(isinstance(l, (nodes.PredAtom, nodes.Comparison)) for l in st.body):
+                        used[st.head.predicate.name] += 10 ** 6   # not inlinable
+                    else:
+                        defs[st.head.predicate.name].append(st)
+            elif isinstance(st, nodes.SetConstraint) and not isinstance(st.formula, nodes.Acyclic):
+                count(st.formula)
+                for le in st.let_exprs: count(le.value) if isinstance(le.value, nodes.SetComprehension) else None
+        def text(t):
+            if isinstance(t, nodes.Variable): return t.name
+            if isinstance(t, nodes.Constant): return str(t.value)
+            if isinstance(t, nodes.Identifier): return t.name
+            if isinstance(t, nodes.BinaryExpr): return f"({text(t.left)} {t.op} {text(t.right)})"
+            raise TranspileError(f"Unsupported term in an acyclic relation: {t!r}")
+        out: dict = {}
+        for n in acyc:
+            if used[n] == 0 and defs[n] and self.checker is not None and n in self.checker.predicates and not self.checker.predicates[n].is_external:
+                items = []
+                for st in defs[n]:
+                    body = []
+                    for lit in st.body:
+                        if isinstance(lit, nodes.PredAtom): body.append(f"{lit.predicate.name}({', '.join(text(a) for a in lit.args)})")
+                        else: body.append(f"{text(lit.left)} {lit.op} {text(lit.right)}")
+                    items.append(([text(a) for a in st.head.args], ", ".join(body)))
+                out[n] = items
+        return out
 
     # --- terms, atoms, literals ---------------------------------------------
 
@@ -326,12 +378,22 @@ class DirectLowerer:
         if isinstance(formula, nodes.Acyclic):
             # (\acyclic r): clingo's acyclicity propagator over the relation's edges;
             # a relation of arity 2k has k-tuples as nodes (the layered SI encoding).
+            # When r is defined only by positive rules and used nowhere else, the edges
+            # are emitted from the rules' bodies and r is not materialised (the
+            # relation would only be grounded to be read once by the propagator).
             assert self.checker is not None
-            info = self.checker.predicates[formula.predicate.name]
+            name = formula.predicate.name
+            info = self.checker.predicates[name]
             k = info.arity // 2
+            def node(terms):
+                return terms[0] if k == 1 else "(" + ", ".join(terms) + ")"
+            inl = self._inline_edges.get(name)
+            if inl:
+                for head_terms, body in inl:
+                    self.extra_rules.append(f"#edge ({node(head_terms[:k])}, {node(head_terms[k:])}) : {body}.")
+                return []
             src = [f"X{i}" for i in range(k)]; dst = [f"Y{i}" for i in range(k)]
-            node = lambda vs: vs[0] if k == 1 else "(" + ", ".join(vs) + ")"
-            self.extra_rules.append(f"#edge ({node(src)}, {node(dst)}) : {formula.predicate.name}({', '.join(src + dst)}).")
+            self.extra_rules.append(f"#edge ({node(src)}, {node(dst)}) : {name}({', '.join(src + dst)}).")
             return []
 
         if isinstance(formula, nodes.SetPartition):

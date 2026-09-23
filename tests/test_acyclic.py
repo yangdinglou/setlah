@@ -37,3 +37,14 @@ def test_acyclic_over_a_chosen_relation():
     program = compile_sl(os.path.join(HERE, "acyclic", "polygraph.sl"))
     assert solve(program, os.path.join(HERE, "acyclic", "polygraph_sat.lp")) is True
     assert solve(program, os.path.join(HERE, "acyclic", "polygraph_unsat.lp")) is False
+
+
+def test_acyclic_relation_defined_by_rules_is_inlined_into_edges():
+    """The layered snapshot-isolation form: a 4-ary relation defined by three rules and used
+    only under (\\acyclic ...) is not materialised; one #edge per rule with the body as condition."""
+    program = compile_sl(os.path.join(HERE, "acyclic", "layered.sl"))
+    asp = transpile_program_to_asp(program)
+    assert "#edge ((X, 0), (Y, 0)) : n(X, Y)." in asp and "#edge ((X, 1), (Y, 0)) : n(X, Y)." in asp and "#edge ((X, 0), (Y, 1)) : rw(X, Y)." in asp
+    assert "dl(" not in asp.replace("#edge", "")
+    assert solve(program, os.path.join(HERE, "acyclic", "layered_sat.lp")) is True     # n 1->2, rw 2->3, rw 3->1: two adjacent anti-dependencies, allowed under SI
+    assert solve(program, os.path.join(HERE, "acyclic", "layered_unsat.lp")) is False  # n cycle 1->2->3->1 on layer 0
