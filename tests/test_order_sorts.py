@@ -49,6 +49,27 @@ def test_variables_bound_only_by_a_choice_get_domain_guards():
     assert not any("c(S" in l for l in asp.splitlines() if l.startswith("&diff")), asp
 
 
+def test_sites_share_one_boolean_per_comparison():
+    asp = compile_sl("shared_sites.sl")
+    heads = {l.split("(")[0] for l in asp.splitlines() if l.startswith("{ __dl_")}
+    assert heads == {"{ __dl_0"}, asp
+    assert "{ __dl_0(B, A) } :- p(A, B)." in asp and "{ __dl_0(B, A) } :- q(A, B)." in asp and "{ __dl_0(B, A) } :- r(A, B)." in asp
+    assert asp.count("&diff{ t(B) - t(A) } <= 0 :- __dl_0(B, A).") == 1
+    assert ":- p(A, B), __dl_0(B, A)." in asp and ":- q(A, B), __dl_0(B, A)." in asp and ":- r(A, B), not __dl_0(B, A)." in asp
+
+
+def test_exclusion_lemma_between_shared_booleans():
+    """Two shared Booleans over the same pair of terms whose bounds cannot both hold
+    (x - y <= -1 and y - x <= -1) exclude each other by one constraint, so the
+    solver sees it without a theory conflict; bounds that can both hold (x <= y
+    and y <= x, the strict-pair model) get no lemma."""
+    asp = compile_sl("dpqa_two_axes.sl")
+    lemmas = [l for l in asp.splitlines() if l.startswith(":- __dl_")]
+    assert ":- __dl_0(V0, V1, V2), __dl_0(V0, V2, V1)." in lemmas and len(lemmas) == 6, lemmas
+    asp = compile_sl("strict_pair.sl")
+    assert not [l for l in asp.splitlines() if l.startswith(":- __dl_")]
+
+
 def test_lowering_emits_theory_atoms():
     asp = compile_sl("strict_order.sl")
     assert "&diff{ x(A0) } <= 15" in asp and "&diff{ x(A0) } >= 0" in asp

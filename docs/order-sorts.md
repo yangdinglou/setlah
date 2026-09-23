@@ -425,6 +425,22 @@ here so the extension work does not leave them behind:
 - **Cost tables (functions of finite arguments to integers).** Already
   expressible as external predicates; document the idiom rather than add
   syntax; sums over them remain outside (Section 6).
+- **Reified-atom sharing across sites (implemented 2026-09-23).** One Boolean
+  per comparison up to the names of its variables, not per site: sites whose
+  comparison canonicalises to the same `(x, y, c)` share the Boolean, each
+  adding its own guard rules once, and a comparison with a numeric bound
+  whose complement is already shared uses the complement. With it the
+  compiler emits, for DPQA, the 14 Booleans of the hand-written program
+  instead of 48. Between shared Booleans over the same pair of terms the
+  compiler also emits the exclusion `:- b1, b2` when their bounds cannot
+  both hold (`x - y <= c1`, `y - x <= c2`, `c1 + c2 < 0`), the propositional
+  half of the hand-written program's exactly-one over less, greater and
+  equal, sound wherever both atoms exist; the implication between two bounds
+  of the same orientation is not emitted, since as a constraint it would be
+  unsound where the weaker atom has no guard. Measured on the 12-qubit graph
+  at 4 stages: 71.8 s per site, 23 s shared, 9.8 s shared with the lemma
+  (`--propagate=full` gives 2.0 s to the shared program without the lemma:
+  the lemma is what the theory's full propagation would find).
 - **One-way reification for constraint-only comparisons.** A comparison
   that occurs only under constraints (never in a rule body that derives
   something, never enumerated) needs only the direction "Boolean false

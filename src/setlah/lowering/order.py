@@ -79,7 +79,7 @@ class OrderLowering:
     def finalize(self) -> list[str]:
         out: list[str] = []
         if self.dl is not None:
-            out += self.dl.rules
+            out += self.dl.rules + self.dl.lemmas()
         for sort, (lo, hi) in self.order_sorts.items():
             fs = [f for f, (_, s_) in self.functions.items() if s_ == sort]
             if not fs:
