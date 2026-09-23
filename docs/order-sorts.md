@@ -410,3 +410,156 @@ The difference-logic extension is the first of these to be implemented
 because its theorem is the paper's and its evidence is the strongest; the
 acyclicity construct is the second because it is a one-line lowering with
 four domains of evidence.
+
+## 11. Proofs, against the implementation (draft, 2026-09-23)
+
+Conventions. `M` is a model with finite sorts, order sorts `O` with ranges
+`[lo_O, hi_O]`, and functions `f : S_1 × … × S_n → O` declared by `Fun`.
+`F` is a set of facts over the external predicates and the finite sorts'
+domains `dom_S`. `Rel(M)` is `M` without its order sorts: the relational
+rules, choices and constraints, with every comparison over order-sort
+values treated as an atom of a distinguished predicate `cmp_i` (one per
+syntactic occurrence, over the occurrence's free variables). The direct
+lowering `L_0` of `Rel(M)` is the paper's PCLP lowering, and T0 gives, for
+any interpretation `c` of the `cmp_i` atoms as facts, a bijection `π`
+between `AS(L_0(Rel(M)) ∪ F ∪ c)` and the models of `Rel(M)` over `F` in
+which the `cmp_i` atoms are read from `c`.
+
+A structure `(I, v)` is a model of `M` over `F` iff `I` is a model of
+`Rel(M)` over `F` with each `cmp_i` read as the truth value of its
+comparison under `v`, and `v` maps every ground `f(a)` into `[lo_O, hi_O]`
+(Section 3). Write `c_v` for the interpretation of the `cmp_i` atoms
+induced by `v`.
+
+### T1 (enumeration)
+
+`L_enum(M)` adds to `L_0(Rel(M))` the facts `dom_O(lo_O..hi_O)` and, per
+function, `1 { f(A, V) : dom_O(V) } 1 :- dom_{S_1}(A_1), …, dom_{S_n}(A_n)`,
+and lowers each comparison as the corresponding built-in literal over the
+value variables bound by the function atoms in the same cube.
+
+*Proof.* Let `X` be an answer set of `L_enum(M) ∪ F`. The choice rules force
+exactly one atom `f(a, x)` per ground `a` with `x ∈ [lo_O, hi_O]`; define
+`v_X(f(a)) = x`. In every cube the function atoms are positive literals
+whose value variables are thereby bound to `v_X`, and the built-in literal
+evaluates to the truth of the comparison under `v_X`; so the cube is
+satisfied in `X` iff it is satisfied in `L_0(Rel(M)) ∪ F ∪ c_{v_X}` with the
+same relational atoms. Hence the restriction `π'(X)` of `X` to the
+relational atoms is an answer set of `L_0(Rel(M)) ∪ F ∪ c_{v_X}` (the
+function atoms are choice atoms constrained only by the exactly-one rule,
+so they do not affect foundedness of the rest), and by T0 `(π(π'(X)), v_X)`
+is a model of `M`. Conversely a model `(I, v)` yields the answer set
+`L_0`-image of `I` plus the atoms `f(a, v(f(a)))`, which satisfies the
+exactly-one rules and every cube. The two maps are inverse. ∎
+
+### T2 (relation)
+
+Let `O` be an order sort of `M` such that every comparison over `O` is
+between two function terms of `O` with no offset (`t_1 op t_2`,
+`op ∈ {=, ≠, <, ≤, >, ≥}`). `L_rel(M)` (for `O`; other sorts as they are)
+adds the element facts `el_O(f(a))` for every ground function term, the
+choice `{ le_O(e_1, e_2) }` over pairs of distinct elements, reflexivity
+`le_O(e, e)`, totality `:- el(e_1), el(e_2), e_1 < e_2, not le(e_1, e_2),
+not le(e_2, e_1)`, transitivity `:- le(e_1,e_2), le(e_2,e_3), not le(e_1,e_3)`,
+the class bound `:- #count{ e : head(e) } > hi_O − lo_O + 1` with
+`head(e) :- el(e), #count{ e' : le(e, e'), le(e', e), e' < e } = 0`, and
+lowers `t_1 ≤ t_2` to `le(t_1, t_2)`, `t_1 < t_2` to `le(t_1, t_2), not
+le(t_2, t_1)`, `t_1 = t_2` to both `le` atoms, and `≠` to the two
+alternatives `not le(t_1, t_2)` and `not le(t_2, t_1)` (each in its own
+cube; `≥`, `>` by symmetry).
+
+*Lemma (representation).* For a finite set `E` and `k ≥ 1`, the total
+preorders on `E` with at most `k` equivalence classes are in bijection with
+the sets `{ v : E → [lo, lo+k−1] }` modulo order-isomorphism (i.e. two
+valuations are identified when they induce the same `≤` on `E`), the
+bijection sending `v` to `e_1 ≼ e_2 ⟺ v(e_1) ≤ v(e_2)` and a preorder to
+its rank map `v(e) = lo + (number of classes strictly below e's class)`.
+*Proof.* A total preorder's classes are linearly ordered; the rank map is a
+valuation with the same induced `≼`, and any valuation inducing `≼` is
+order-isomorphic to it. The number of classes is the number of distinct
+values, hence at most `k` iff a valuation into `k` values exists. ∎
+
+*Proof of T2.* Let `X` be an answer set of `L_rel(M) ∪ F`. The totality and
+transitivity constraints and reflexivity make `le_X` a total preorder on
+the ground elements; `head` marks the least element of each class (the
+`#count` is zero exactly for the element with no smaller-indexed member of
+its class), so the class bound holds iff the preorder has at most
+`hi_O − lo_O + 1` classes. By the lemma there is a valuation `v_X` into
+`[lo_O, hi_O]` inducing `le_X`; each lowered comparison holds in `X` iff the
+comparison holds under `v_X` (for `≤`, `<`, `=`, `≠` by the definitions, since
+they mention only the induced order). So the relational part of `X` is an
+answer set of `L_0(Rel(M)) ∪ F ∪ c_{v_X}` and `(π, v_X)` is a model of `M`.
+Conversely a model `(I, v)` gives the answer set with `le` the preorder
+induced by `v` (choice atoms constrained only by the axioms), which
+satisfies the class bound because `v` takes at most `hi_O − lo_O + 1` values.
+The correspondence is a bijection up to order-isomorphism of `v`, which is
+the statement. Offsets break the lemma's premise: `t_1 + c ≤ t_2` is not
+determined by the induced preorder (the applicability condition). ∎
+
+### T4 (difference logic, as implemented)
+
+Let `O` be an order sort of `M` all of whose comparisons normalise to
+`x − y ≤ c` (`x`, `y` function terms of `O` or absent, `c` a constant
+expression over non-order variables), including differences of two values
+against a constant. `L_dl(M)` adds, per ground function term, the theory
+atoms `&diff{ f(a) } ≤ hi_O` and `≥ lo_O`, and lowers each comparison
+occurrence `i` with free variables `z` (the function terms' arguments and
+the constant's variables) to a Boolean `b_i(z)` with the rules
+`{ b_i(z) } :- guards(z)`, `&diff{ x − y } ≤ c :- b_i(z)`, and
+`&diff{ y − x } ≤ −c−1 :- not b_i(z), guards(z)`; `=` becomes two such
+Booleans in one cube, `≠` two alternatives, and the cube's literal is
+`b_i(z)` or `not b_i(z)`.
+
+*Lemma (reification).* For every valuation `v` of the theory terms and every
+ground `z`, exactly one of `b_i(z)` true, `b_i(z)` false is consistent with
+the theory atoms it triggers, namely the one equal to the truth of
+`v(x) − v(y) ≤ c` under `v`. *Proof.* If `v(x) − v(y) ≤ c` then the atom
+triggered by `b_i` true holds and the one triggered by `b_i` false,
+`v(y) − v(x) ≤ −c−1`, i.e. `v(x) − v(y) ≥ c+1`, fails; symmetrically
+otherwise. ∎
+
+*Proof of T4.* clingo-dl's answer sets are the answer sets `X` of the
+program in which the set of triggered theory atoms has a consistent
+valuation `v_X` (the propagator rejects the others). By the reification
+lemma the truth of every `b_i(z)` in `X` equals the truth of the
+corresponding comparison under `v_X`, and by the range atoms `v_X` maps
+into `[lo_O, hi_O]`. So the relational part of `X` is an answer set of
+`L_0(Rel(M)) ∪ F ∪ c_{v_X}` and `(π, v_X)` is a model of `M`. Conversely,
+for a model `(I, v)`, set every `b_i(z)` to the truth of its comparison
+under `v`; the triggered theory atoms are then exactly the true ones,
+consistent with `v`, and the program's answer set is the `L_0`-image of `I`
+plus those Booleans. The map (answer set, `v_X`) ↦ `(π, v_X)` is a bijection
+onto the models, with `v_X` determined only up to the theory's freedom on
+terms no comparison mentions (a remark, not a gap: such terms are
+unconstrained in `M` as well). The `Fun` atoms disappear from the cubes
+because their only role, binding the value variable, is taken by the term
+substitution; their argument variables are bound by the cube's other
+positive literals or by the domain guards the pass adds. ∎
+
+Founded theory atoms (flingo) would break the reification lemma: `b_i`
+false with `&diff{ y − x } ≤ −c−1` unsupported could be accepted although
+`v` violates it. The constraint reading is the one the study validated
+(Pusharoo, 274 of 274 against z3).
+
+### T6 (selection, as implemented)
+
+`auto` lowers a sort by `L_rel` if no comparison over it raises the
+applicability failure of T2 (an offset, a constant, a distance), otherwise
+by `L_dl` when the extension is enabled and every comparison normalises to
+a difference constraint, otherwise by `L_enum`; a sort whose values occur
+outside comparisons, in a sum of two values, or under a product, goes to
+`L_enum`. Each branch's condition is the hypothesis of T2, T4 or T1
+respectively, decided syntactically during the lowering (the failures are
+raised by the pass and the sort is re-lowered), and the theorems compose
+because each sort's lowering is independent of the others' (a comparison
+never mixes sorts, by the checker). ∎
+
+### What T5 adds (appendix)
+
+`(\acyclic r)` lowered to `#edge` is correct by the definition of clingo's
+propagator (an answer set is accepted iff the chosen edges are acyclic);
+the connection to order sorts is that a strict total order `f` with
+`r(a, b) → f(a) < f(b)` exists iff `r` is acyclic and its longest path is
+shorter than the range, so the "integer positions" encoding of the SMT
+baselines is `L_enum` or `L_dl` of a sort whose only use is that constraint,
+and `#edge` is the lowering that drops the sort.
