@@ -146,7 +146,8 @@ class DirectLowerer:
                 self.aux_rules = []
                 self._next_aux = 0
                 self.extra_rules = []
-                self.order = OrderLowering(dict(checker.functions), dict(checker.order_sorts), lambda v: None, trial, self.extensions)
+                self.order = OrderLowering(dict(checker.functions), dict(checker.order_sorts), lambda v: None, trial, self.extensions,
+                                           {n for n, i in checker.predicates.items() if i.is_external})
                 try:
                     lowered = [self.lower_block(block) for block in blocks]
                     break

@@ -31,6 +31,17 @@ def solve(asp, facts):
     return run_clingodl_source(asp, extra_files=[os.path.join(HERE, facts)]).satisfiable
 
 
+def test_reified_guards_take_fact_literals_only():
+    """The Boolean for ``t(S1) < t(S2)`` is guarded by ``pair(S1, S2)`` alone; the
+    chosen ``c`` literals of the same cube are not guards (TSN: 64 copies per rule)."""
+    asp = compile_sl("guard_choice.sl")
+    dl_lines = [l for l in asp.splitlines() if "__dl_0" in l]
+    assert any(l.startswith("{ __dl_0(") and l.endswith(":- pair(S1, S2).") for l in dl_lines), dl_lines
+    theory = [l for l in dl_lines if l.startswith("{ __dl_0(") or l.startswith("&diff")]
+    assert len(theory) == 3 and not any("c(S1" in l or "c(S2" in l for l in theory), theory
+    assert ":- pair(S1, S2), c(S1, Q1), c(S2, Q2), __dl_0(" in asp and "not Q1 != Q2" in asp
+
+
 def test_lowering_emits_theory_atoms():
     asp = compile_sl("strict_order.sl")
     assert "&diff{ x(A0) } <= 15" in asp and "&diff{ x(A0) } >= 0" in asp

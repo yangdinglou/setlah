@@ -52,7 +52,9 @@ class _Conj(list):
 
 class OrderLowering:
     def __init__(self, functions: dict[str, tuple[list[str], str]], order_sorts: dict[str, tuple[int, int]],
-                 var_types_of: Callable[[str], str | None], modes: dict[str, str], extensions: tuple[str, ...] = ()):
+                 var_types_of: Callable[[str], str | None], modes: dict[str, str], extensions: tuple[str, ...] = (),
+                 externals: set[str] | None = None):
+        self.externals = externals           # deterministic (external) predicates; None = unknown
         self.functions = functions           # f -> (argument sorts, order sort)
         self.order_sorts = order_sorts       # sort -> (lo, hi)
         self.var_types_of = var_types_of
@@ -141,10 +143,16 @@ class OrderLowering:
         if not binding:
             return [cube]
         cubes: list[list] = [[]]
-        context = [it for it in rest if isinstance(it, Lit) and it.positive and isinstance(it.atom, PredA)]
+        # guards for reified comparisons: the cube's positive literals over external
+        # (fact) predicates bind the variables; a literal over a defined or chosen
+        # predicate is used only for a variable no fact literal binds, since it would
+        # otherwise multiply the theory rules by its models (TSN's queue choice: 64x)
+        positives = [it for it in rest if isinstance(it, Lit) and it.positive and isinstance(it.atom, PredA)]
+        context = [it for it in positives if self._deterministic(it.atom.name)]
+        context_weak = [it for it in positives if not self._deterministic(it.atom.name)]
         for it in rest:
             if isinstance(it, Lit) and isinstance(it.atom, CompA) and self._mentions(it.atom, binding):
-                alternatives = self.compare(it.atom, it.positive, binding, bound_args, var_types, context)
+                alternatives = self.compare(it.atom, it.positive, binding, bound_args, var_types, context, context_weak)
                 cubes = [c + [alt] for c in cubes for alt in alternatives]
             else:
                 touched = [v for v in self._vars(it) if v in binding]
@@ -175,7 +183,11 @@ class OrderLowering:
 
     # --- comparisons --------------------------------------------------------------
 
-    def compare(self, comp: CompA, positive: bool, binding: dict, bound_args: dict, var_types: dict, context: list = ()) -> list:
+    def _deterministic(self, name: str) -> bool:
+        return self.externals is None or name in self.externals or name.startswith("dom_")
+
+    def compare(self, comp: CompA, positive: bool, binding: dict, bound_args: dict, var_types: dict, context: list = (),
+                context_weak: list = ()) -> list:
         left, right = self._linear(comp.left, binding), self._linear(comp.right, binding)
         net: dict = dict(left.coeffs)
         for v, k in right.coeffs.items():
@@ -207,7 +219,7 @@ class OrderLowering:
         else: raise TranspileError(f"Order sorts: unsupported comparison {op}")
         out = []
         for conj in alts:
-            lits = [self.dl.reified(x_, y_, c_, True, binding, bound_args, var_types, [self._lit_text(l) for l in context]) for x_, y_, c_ in conj]
+            lits = [self.dl.reified(x_, y_, c_, True, binding, bound_args, var_types, [self._lit_text(l) for l in context], [self._lit_text(l) for l in context_weak]) for x_, y_, c_ in conj]
             out.append(_Conj(lits) if len(lits) > 1 else lits[0])
         return out
 
