@@ -229,6 +229,11 @@ class DirectLowerer:
 
     _inline_edges: dict = {}
 
+    @classmethod
+    def _collect_term_vars(cls, t: Any, out: set) -> None:
+        if isinstance(t, nodes.Variable): out.add(t.name)
+        elif isinstance(t, nodes.BinaryExpr): cls._collect_term_vars(t.left, out); cls._collect_term_vars(t.right, out)
+
     def _acyclic_inlining(self, block: nodes.Block) -> dict:
         """Relations under (\\acyclic r) that are defined only by deterministic rules
         with predicate-atom and comparison bodies in this block and occur nowhere
@@ -250,7 +255,16 @@ class DirectLowerer:
                 for lit in st.body:
                     count(lit) if isinstance(lit, nodes.PredAtom) else None
                 if st.head.predicate.name in acyc:
-                    if st.is_choice or not st.body or not all(isinstance(l, (nodes.PredAtom, nodes.Comparison)) for l in st.body):
+                    # inlinable only when the rule projects nothing away: a body variable
+                    # absent from the head would turn one edge into one per binding of it,
+                    # and the propagator would see the duplicates the relation deduplicated
+                    # (measured on Cobra: 3.5 s against 1.9 s)
+                    head_vars = {a.name for a in st.head.args if isinstance(a, nodes.Variable)}
+                    body_vars: set = set()
+                    for l in st.body:
+                        for t in (l.args if isinstance(l, nodes.PredAtom) else [l.left, l.right]):
+                            self._collect_term_vars(t, body_vars)
+                    if st.is_choice or not st.body or not all(isinstance(l, (nodes.PredAtom, nodes.Comparison)) for l in st.body) or not body_vars <= head_vars:
                         used[st.head.predicate.name] += 10 ** 6   # not inlinable
                     else:
                         defs[st.head.predicate.name].append(st)

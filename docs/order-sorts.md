@@ -386,9 +386,11 @@ here so the extension work does not leave them behind:
 - **Acyclicity as a construct: implemented 2026-09-23.** `(\acyclic R)` for a
   derived, chosen or external relation `R`; lowering `#edge (X, Y) : R(X, Y).`,
   and for arity 2k `#edge ((X0,..), (Y0,..)) : R(...)` with k-tuples as nodes
-  (the SI layered form). A relation defined only by deterministic rules and
-  used nowhere else is not materialised: one `#edge` per defining rule with
-  the rule body as condition (the layered SI form then is exactly the three
+  (the SI layered form). A relation defined only by deterministic, projection-free rules (every body
+  variable in the head) and used nowhere else is not materialised: one `#edge`
+  per defining rule with the rule body as condition; a projecting rule keeps
+  the relation, since the propagator would otherwise see one edge per binding
+  of the projected variables (Cobra: 3.5 s against 1.9 s) (the layered SI form then is exactly the three
   `#edge` statements the study attached by hand, measured 2.4 times faster
   than grounding the 4-ary relation first). Tests `tests/test_acyclic.py`. Semantics: `R`'s transitive closure is
   irreflexive; equivalent to the existence of a strict order extending `R`
