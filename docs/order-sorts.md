@@ -421,6 +421,19 @@ here so the extension work does not leave them behind:
 - **Cost tables (functions of finite arguments to integers).** Already
   expressible as external predicates; document the idiom rather than add
   syntax; sums over them remain outside (Section 6).
+- **One-way reification for constraint-only comparisons.** A comparison
+  that occurs only under constraints (never in a rule body that derives
+  something, never enumerated) needs only the direction "Boolean false
+  implies the comparison"; the converse rule, which makes the Boolean
+  faithful, can be dropped without changing satisfiability (each model of
+  `M` still has a stable model, and every stable model still satisfies the
+  constraint). TSNKit's dumped queries use this form for their disjunctions
+  and are 1.4x faster at one thread on 128 streams than the faithful form
+  (318 s against 460 s), while the faithful form is ahead to 64 streams and
+  at eight threads (52 s against 201 s). Not applied: T4 is stated for the
+  faithful form, and the one-way form loses the one-to-one correspondence of
+  answer sets and models (a Boolean may be true while its comparison holds).
+  Candidate for a polarity-aware option with its own lemma.
 - **Theory propagator interface (LRA).** Out of the paper's core; record as
   future work with Mockdown's oracle loop as the evidence.
 
