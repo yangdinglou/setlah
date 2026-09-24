@@ -202,7 +202,9 @@ comparisons between its terms, and `L_enum` otherwise (values as arguments
 of relations over the sort, sums of two values, products, aggregates).
 With the extension enabled, a sort that `L_rel` refuses because a
 comparison carries an offset, a constant or a distance is retried as
-`L_dl` before the fallback to `L_enum` (`auto` in `lowering/lower.py`;
+`L_dl`, and a sort `L_dl` refuses because a comparison is not a difference
+constraint (a sum of two values after an offset elsewhere) falls to
+`L_enum`; each retry is strictly weaker, so the chain is rel, dl, enum (`auto` in `lowering/lower.py`;
 `--order-lowering X=dl` forces the theory for one sort). The rule decides
 on the model text alone, so it prefers the theory-free lowering wherever
 it applies and uses the theory only where the relation cannot express the
@@ -459,6 +461,12 @@ here so the extension work does not leave them behind:
   faithful form, and the one-way form loses the one-to-one correspondence of
   answer sets and models (a Boolean may be true while its comparison holds).
   Candidate for a polarity-aware option with its own lemma.
+- **Nullary functions (`Fun t: () -> T`).** A query's integer variables are
+  constants of the sort; the grammar requires at least one argument sort, so
+  the Pusharoo port declares a unit sort `One` with one element and writes
+  `Fun t: (One) -> T`, `t(X, V)` with `one(X)` as the guard. Allowing the
+  empty argument list is a grammar and lowering change of a few lines
+  (enumeration: `1 { t(V) : dom_T(V) } 1.`; theory: the variable `t`).
 - **Theory propagator interface (LRA).** Out of the paper's core; record as
   future work with Mockdown's oracle loop as the evidence.
 

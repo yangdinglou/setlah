@@ -12,6 +12,8 @@
 - Difference-logic extension: one reified Boolean per comparison up to variable
   names, shared across sites (complements included), with exclusion lemmas
   between shared Booleans whose bounds cannot both hold.
+- Selection `auto` falls from `dl` to `enum` when a comparison is not a
+  difference constraint (the chain is rel, dl, enum).
 - `--acyclic-inlining auto|all|none` (per relation `r=all`, env
   `SETLAH_ACYCLIC_INLINING`) overrides the projection-free inlining rule.
 
