@@ -639,10 +639,12 @@ occurs in `t_i`: then each edge is presented to the propagator once, as in
 the materialised form; a projecting rule presents it once per binding of
 the projected variables, which is correct and can go either way: slower on
 Cobra (`edge(A, B) :- pick(C, K), alt(C, K, A, B)`, 3.5 s against 1.9 s)
-and faster on one VCh-rf instance (`hbc(X1, Y1) :- hb(X, Y), rep(X, X1),
-rep(Y, Y1), X1 != Y1`, 13 s against 167 s on `hugo_main_5000`, the other
-62 within noise). The compiler takes the form that is never worse by much,
-and `--acyclic-inlining auto|all|none` (per relation: `hbc=all`; env
+and mixed on VCh-rf (`hbc(X1, Y1) :- hb(X, Y), rep(X, X1), rep(Y, Y1),
+X1 != Y1`: 13 s against 167 s on `hugo_main_5000`, but two to three times
+slower on the other large instances, 47 s against 20 s on the next
+slowest, measured with `--acyclic-inlining hbc=all` on an idle machine).
+The compiler takes the form that is never worse by much, and
+`--acyclic-inlining auto|all|none` (per relation: `hbc=all`; env
 `SETLAH_ACYCLIC_INLINING`) overrides it; a cost model over the multiplicity
 of the projected variables would make the choice automatic. The three layered rules of the
 snapshot-isolation model are projection-free and their inlined form matches
