@@ -39,6 +39,18 @@ def test_projecting_rules_are_not_inlined():
     assert "#edge (X0, Y0) : edge(X0, Y0)." in asp and "edge(A, B) :- pick(C, K), alt(C, K, A, B)." in asp
 
 
+def test_inlining_mode_all_inlines_a_projecting_rule():
+    """``--acyclic-inlining edge=all`` inlines Cobra's projecting rule (one #edge per
+    alternative), the form that lost on Cobra and won on one VCh-rf instance."""
+    program = Parser().parse(open(os.path.join(HERE, "acyclic", "polygraph.sl")).read())
+    DirectLowerer(acyclic_inlining="edge=all").rewrite_program(program)
+    asp = transpile_program_to_asp(program)
+    assert "#edge (A, B) : pick(C, K), alt(C, K, A, B)." in asp and "#edge (X0, Y0) : edge(X0, Y0)." not in asp, asp
+    program = Parser().parse(open(os.path.join(HERE, "acyclic", "polygraph.sl")).read())
+    DirectLowerer(acyclic_inlining="none").rewrite_program(program)
+    assert "#edge (X0, Y0) : edge(X0, Y0)." in transpile_program_to_asp(program)
+
+
 def test_acyclic_over_a_chosen_relation():
     """Cobra's polygraph in miniature: fixed edges 1->2->3 and one constraint with two
     alternatives; satisfiable when one alternative closes no cycle, unsatisfiable when both do."""

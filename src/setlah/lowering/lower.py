@@ -75,9 +75,10 @@ class DirectLowerer:
     #: auxiliary predicates instead of being distributed.
     MAX_DNF_CUBES = 32
 
-    def __init__(self, verbose: bool = False, *, entailment_elim: str = "asp", enable_cost_conversion: bool = False, order_lowering: str | None = None, extensions: tuple[str, ...] | None = None):
+    def __init__(self, verbose: bool = False, *, entailment_elim: str = "asp", enable_cost_conversion: bool = False, order_lowering: str | None = None, acyclic_inlining: str | None = None, extensions: tuple[str, ...] | None = None):
         self.verbose = verbose
         self.order_modes = self._parse_order_modes(order_lowering)
+        self.acyclic_inlining = self._parse_acyclic_inlining(acyclic_inlining)
         import os
         self.extensions = tuple(extensions) if extensions is not None else tuple(x for x in os.environ.get("SETLAH_EXT", "").split(",") if x)
         self.entailment_elim = entailment_elim
@@ -107,6 +108,29 @@ class DirectLowerer:
         for mode in modes.values():
             if mode not in ("auto", "enum", "rel", "dl"):
                 raise TranspileError(f"Unknown order-sort lowering {mode!r} (auto, enum, rel or dl)")
+        return modes
+
+    @staticmethod
+    def _parse_acyclic_inlining(spec: str | None) -> dict[str, str]:
+        """``auto`` (default: inline a relation's defining rules into ``#edge`` only when
+        they project nothing away), ``all`` (inline every eligible rule) or ``none``, for
+        every acyclic relation or per relation (``hbc=all,*=auto``); env
+        ``SETLAH_ACYCLIC_INLINING``."""
+        import os
+        spec = spec or os.environ.get("SETLAH_ACYCLIC_INLINING") or "auto"
+        modes: dict[str, str] = {}
+        for part in spec.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "=" in part:
+                rel, mode = part.split("=", 1)
+                modes[rel.strip()] = mode.strip()
+            else:
+                modes["*"] = part
+        for mode in modes.values():
+            if mode not in ("auto", "all", "none"):
+                raise TranspileError(f"Unknown acyclic inlining mode {mode!r} (auto, all or none)")
         return modes
 
     # --- program / block -----------------------------------------------------
@@ -294,7 +318,9 @@ class DirectLowerer:
                     for l in st.body:
                         for t in (l.args if isinstance(l, nodes.PredAtom) else [l.left, l.right]):
                             self._collect_term_vars(t, body_vars)
-                    if st.is_choice or not st.body or not all(isinstance(l, (nodes.PredAtom, nodes.Comparison)) for l in st.body) or not body_vars <= head_vars:
+                    mode = self.acyclic_inlining.get(st.head.predicate.name, self.acyclic_inlining.get("*", "auto"))
+                    projecting = not body_vars <= head_vars
+                    if st.is_choice or not st.body or not all(isinstance(l, (nodes.PredAtom, nodes.Comparison)) for l in st.body) or mode == "none" or (mode == "auto" and projecting):
                         used[st.head.predicate.name] += 10 ** 6   # not inlinable
                     else:
                         defs[st.head.predicate.name].append(st)

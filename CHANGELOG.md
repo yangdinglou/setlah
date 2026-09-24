@@ -12,6 +12,8 @@
 - Difference-logic extension: one reified Boolean per comparison up to variable
   names, shared across sites (complements included), with exclusion lemmas
   between shared Booleans whose bounds cannot both hold.
+- `--acyclic-inlining auto|all|none` (per relation `r=all`, env
+  `SETLAH_ACYCLIC_INLINING`) overrides the projection-free inlining rule.
 
 - `(\acyclic r)`: a constraint that the relation `r` has an irreflexive transitive closure, lowered to `#edge` (relations of arity 2k have k-tuples as nodes); four ports of the applications study attached this by hand; a relation defined only by rules and used nowhere else is inlined into one `#edge` per rule instead of being grounded.
 - Order sorts: `OrdDOM` and `Fun` declarations with two core lowerings in plain ASP, enumeration (`enum`, the basic one) and a preorder relation (`rel`), the selection rule as the default (`auto`), and difference logic as an extension (`--ext dl`, `setlah.ext.dl`, run under clingo-dl through `--backend auto`); `--order-lowering` selects per sort (`X=rel,C=dl`); design and theorems in `docs/order-sorts.md`.

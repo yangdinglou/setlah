@@ -46,6 +46,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Enable an extension (repeatable): dl, difference logic for order sorts under clingo-dl; default from SETLAH_EXT",
     )
     ap.add_argument(
+        "--acyclic-inlining",
+        default=None,
+        help="Inlining of an acyclic relation's defining rules into #edge: auto (default: only projection-free rules), all, none, or per relation (hbc=all); default from SETLAH_ACYCLIC_INLINING",
+    )
+    ap.add_argument(
         "--order-lowering",
         default=None,
         help="Lowering of order sorts: auto (default: a preorder relation where every comparison is between two values without offsets; otherwise difference logic with --ext dl, else enumeration), enum, rel, dl, or per sort as X=rel,C=dl; "
@@ -100,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     front_kwargs = dict(verbose=args.verbose, entailment_elim=args.entailment_elim, enable_cost_conversion=args.cost_conversion)
     if args.lowering == "direct":
         front_kwargs["order_lowering"] = args.order_lowering
+        front_kwargs["acyclic_inlining"] = args.acyclic_inlining
         exts = [x for part in args.ext for x in part.split(",") if x] or [x for x in os.environ.get("SETLAH_EXT", "").split(",") if x]
         front_kwargs["extensions"] = tuple(exts)
     rw = front(**front_kwargs)
