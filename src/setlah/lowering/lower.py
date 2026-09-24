@@ -181,9 +181,9 @@ class DirectLowerer:
                     want = e.want
                     if want == "dl" and "dl" not in self.extensions:
                         want = "enum"
-                    if trial[e.sort] == want or (trial[e.sort] == "dl" and want == "enum"):
+                    if trial[e.sort] == want:
                         raise
-                    trial[e.sort] = want
+                    trial[e.sort] = want   # rel -> dl -> enum, or rel -> enum: each retry strictly weaker
             program.blocks = lowered
             program._order_modes = dict(trial)  # type: ignore[attr-defined]
         else:
