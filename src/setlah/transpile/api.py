@@ -198,6 +198,18 @@ def _parse_asp_to_clingo_ast(source: str) -> list[clingo.ast.AST]:
 
 
 
+def run_sat_source(source: str, *, extra_files: list[str] | None = None, solver: str = "cadical153", on_model=None):
+    """Decide the compiled program with a SAT solver (grounded by clingo, completed; tight programs only)."""
+    from ..ext.sat import run_source
+    return run_source(source, extra_files=extra_files, solver=solver, on_model=on_model)
+
+
+def run_monosat_source(source: str, *, extra_files: list[str] | None = None, on_model=None):
+    """Decide the compiled program with MonoSAT (completion plus its graph theory for #edge)."""
+    from ..ext.mono import run_source
+    return run_source(source, extra_files=extra_files, on_model=on_model)
+
+
 def run_clingodl_source(source, *, extra_files=None, arguments=None, on_model=None):
     """Execute a program with ``&diff`` atoms under clingo-dl (the dl extension)."""
     from ..ext.dl import run_source

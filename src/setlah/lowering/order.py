@@ -23,6 +23,8 @@ arguments of ordinary predicates or in aggregates goes to ``enum``.
 
 from __future__ import annotations
 
+import re
+
 from typing import Any, Callable
 
 from ..ast import nodes
@@ -53,8 +55,10 @@ class _Conj(list):
 class OrderLowering:
     def __init__(self, functions: dict[str, tuple[list[str], str]], order_sorts: dict[str, tuple[int, int]],
                  var_types_of: Callable[[str], str | None], modes: dict[str, str], extensions: tuple[str, ...] = (),
-                 deterministic: set[str] | None = None):
+                 deterministic: set[str] | None = None, may_defs: dict | None = None):
         self.deterministic = deterministic   # external and deterministically derived predicates; None = unknown
+        self.may_defs = may_defs or {}       # non-deterministic defined predicate -> (is_choice, [(head, body)]) for __may_ rules
+        self.may_used: set[str] = set()
         self.functions = functions           # f -> (argument sorts, order sort)
         self.order_sorts = order_sorts       # sort -> (lo, hi)
         self.var_types_of = var_types_of
@@ -79,7 +83,7 @@ class OrderLowering:
     def finalize(self) -> list[str]:
         out: list[str] = []
         if self.dl is not None:
-            out += self.dl.rules + self.dl.lemmas()
+            out += self.dl.rules + self.dl.lemmas() + self._may_rules()
         for sort, (lo, hi) in self.order_sorts.items():
             fs = [f for f, (_, s_) in self.functions.items() if s_ == sort]
             if not fs:
@@ -151,6 +155,13 @@ class OrderLowering:
         # it makes the Boolean's existence depend on the choice, which cost DPQA 20x
         # (0.96 s against 19.4 s on the 10-qubit graph at 4 stages)
         context = [it for it in rest if isinstance(it, Lit) and it.positive and isinstance(it.atom, PredA) and self._deterministic(it.atom.name)]
+        # then, for a positive literal over a predicate defined by non-choice rules whose
+        # truth depends on a choice, its deterministic over-approximation __may_p (a
+        # superset in every answer set, so a sound guard; see DirectLowerer._may_definitions)
+        for it in rest:
+            if isinstance(it, Lit) and it.positive and isinstance(it.atom, PredA) and not self._deterministic(it.atom.name) and it.atom.name in self.may_defs and not self.may_defs[it.atom.name][0]:
+                self.may_used.add(it.atom.name)
+                context.append(Lit(PredA("__may_" + it.atom.name, it.atom.args), True))
         for it in rest:
             if isinstance(it, Lit) and isinstance(it.atom, CompA) and self._mentions(it.atom, binding):
                 alternatives = self.compare(it.atom, it.positive, binding, bound_args, var_types, context)
@@ -185,7 +196,23 @@ class OrderLowering:
     # --- comparisons --------------------------------------------------------------
 
     def _deterministic(self, name: str) -> bool:
-        return self.deterministic is None or name in self.deterministic or name.startswith("dom_")
+        return self.deterministic is None or name in self.deterministic or name.startswith("dom_") or name.startswith("__may_")
+
+    def _may_rules(self) -> list[str]:
+        """The ``__may_`` rules for every over-approximation a guard used, transitively."""
+        out: list[str] = []
+        todo = list(self.may_used); done: set = set()
+        while todo:
+            name = todo.pop()
+            if name in done or name not in self.may_defs:
+                continue
+            done.add(name)
+            for head, body in self.may_defs[name][1]:
+                out.append(f"__may_{head} :- {body}." if body else f"__may_{head}.")
+                for dep in re.findall(r"__may_([a-z][A-Za-z0-9_']*)\(", body):
+                    if dep not in done:
+                        todo.append(dep)
+        return out
 
     def compare(self, comp: CompA, positive: bool, binding: dict, bound_args: dict, var_types: dict, context: list = ()) -> list:
         left, right = self._linear(comp.left, binding), self._linear(comp.right, binding)

@@ -21,6 +21,9 @@ elimination kept ``not dom_S(_)`` cubes for the empty case).
 
 from __future__ import annotations
 
+import os
+import re
+
 from typing import Any
 
 from ..ast import nodes
@@ -75,11 +78,12 @@ class DirectLowerer:
     #: auxiliary predicates instead of being distributed.
     MAX_DNF_CUBES = 32
 
-    def __init__(self, verbose: bool = False, *, entailment_elim: str = "asp", enable_cost_conversion: bool = False, order_lowering: str | None = None, acyclic_inlining: str | None = None, extensions: tuple[str, ...] | None = None):
+    def __init__(self, verbose: bool = False, *, entailment_elim: str = "asp", enable_cost_conversion: bool = False, order_lowering: str | None = None, acyclic_inlining: str | None = None, acyclic_lowering: str | None = None, acyclic_range: int | None = None, extensions: tuple[str, ...] | None = None):
         self.verbose = verbose
         self.order_modes = self._parse_order_modes(order_lowering)
         self.acyclic_inlining = self._parse_acyclic_inlining(acyclic_inlining)
-        import os
+        self.acyclic_lowering = self._parse_modes(acyclic_lowering, "SETLAH_ACYCLIC_LOWERING", "edge", ("edge", "closure", "positions"), "acyclic lowering")
+        self.acyclic_range = acyclic_range if acyclic_range is not None else int(os.environ.get("SETLAH_ACYCLIC_RANGE", 1 << 24))
         self.extensions = tuple(extensions) if extensions is not None else tuple(x for x in os.environ.get("SETLAH_EXT", "").split(",") if x)
         self.entailment_elim = entailment_elim
         self.checker: SemanticChecker | None = None
@@ -93,7 +97,6 @@ class DirectLowerer:
     @staticmethod
     def _parse_order_modes(spec: str | None) -> dict[str, str]:
         """``dl`` / ``rel`` for every order sort, or ``X=rel,C=dl`` per sort (``*`` for the rest)."""
-        import os
         spec = spec or os.environ.get("SETLAH_ORDER_LOWERING") or "auto"
         modes: dict[str, str] = {}
         for part in spec.split(","):
@@ -111,12 +114,68 @@ class DirectLowerer:
         return modes
 
     @staticmethod
+    def _parse_modes(spec: str | None, env: str, default: str, allowed: tuple, what: str) -> dict[str, str]:
+        """``mode`` for every relation, or ``r=mode,*=mode`` per relation; the environment
+        variable ``env`` supplies the default."""
+        spec = spec or os.environ.get(env) or default
+        modes: dict[str, str] = {}
+        for part in spec.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "=" in part:
+                rel, mode = part.split("=", 1)
+                modes[rel.strip()] = mode.strip()
+            else:
+                modes["*"] = part
+        for mode in modes.values():
+            if mode not in allowed:
+                raise TranspileError(f"Unknown {what} mode {mode!r} ({', '.join(allowed)})")
+        return modes
+
+    def _acyclic_mode(self, name: str) -> str:
+        """``edge`` (clingo's propagator), ``closure`` (the transitive closure as rules with
+        an irreflexivity constraint) or ``positions`` (a total function into an order sort
+        with ``r(a, b) -> pos(a) < pos(b)``, the SMT baselines' idiom) for ``(\\acyclic name)``."""
+        return self.acyclic_lowering.get(name, self.acyclic_lowering.get("*", "edge"))
+
+    def _acyclic_positions(self, program: nodes.Program) -> bool:
+        """Rewrite every ``(\\acyclic r)`` selected for the ``positions`` lowering into an
+        order sort ``Pos_r``, a function ``pos_r`` from the node tuples into it, and the
+        constraint ``r(a, b) -> pos_r(a) < pos_r(b)``; the order sort is then lowered like
+        any other (difference logic when the extension is enabled, else enumeration over
+        ``acyclic_range``). Returns whether the program changed."""
+        assert self.checker is not None
+        from ..parsing.parser import Parser
+        todo = [(b, i) for b, block in enumerate(program.blocks) for i, st in enumerate(block.statements)
+                if isinstance(st, nodes.SetConstraint) and isinstance(st.formula, nodes.Acyclic) and self._acyclic_mode(st.formula.predicate.name) == "positions"]
+        if not todo:
+            return False
+        decls, cons = [], []
+        for b, i in todo:
+            name = program.blocks[b].statements[i].formula.predicate.name
+            info = self.checker.predicates[name]; k = info.arity // 2
+            sorts = [str(t) for t in info.arg_types[:k]]
+            if any(not re.match(r"^[A-Z]", t) for t in sorts):
+                raise TranspileError(f"(\\acyclic {name}) as positions: the node sorts must be declared sorts, got {sorts}")
+            P, f = f"Pos_{name}", f"pos_{name}"
+            xs = [f"X{j}" for j in range(k)]; ys = [f"Y{j}" for j in range(k)]
+            decls.append(f"OrdDOM {P}: 0..{self.acyclic_range}.\nFun {f}: ({', '.join(sorts)}) -> {P}.")
+            cons.append(f"\\forall {', '.join(xs + ys)}, P1, P2. (\\impl (\\and {name}({', '.join(xs + ys)}) {f}({', '.join(xs)}, P1) {f}({', '.join(ys)}, P2)) (< P1 P2)).")
+            if P not in self.order_modes:
+                self.order_modes[P] = "dl" if "dl" in self.extensions else "enum"
+        parsed = Parser().parse("\n".join(decls) + "\n[\n" + "\n".join(cons) + "\n]\n")
+        program.domains = list(program.domains) + list(parsed.domains)
+        for (b, i), st in zip(todo, parsed.blocks[0].statements):
+            program.blocks[b].statements[i] = st
+        return True
+
+    @staticmethod
     def _parse_acyclic_inlining(spec: str | None) -> dict[str, str]:
         """``auto`` (default: inline a relation's defining rules into ``#edge`` only when
         they project nothing away), ``all`` (inline every eligible rule) or ``none``, for
         every acyclic relation or per relation (``hbc=all,*=auto``); env
         ``SETLAH_ACYCLIC_INLINING``."""
-        import os
         spec = spec or os.environ.get("SETLAH_ACYCLIC_INLINING") or "auto"
         modes: dict[str, str] = {}
         for part in spec.split(","):
@@ -138,6 +197,9 @@ class DirectLowerer:
     def rewrite_program(self, program: nodes.Program, convert_only: bool = False) -> nodes.Program:
         self.checker = SemanticChecker(verbose=self.verbose)
         self.checker.check_program(program)
+        if self._acyclic_positions(program):
+            self.checker = SemanticChecker(verbose=self.verbose)
+            self.checker.check_program(program)
         canonical = {
             name: info.canonical_args
             for name, info in self.checker.predicates.items()
@@ -171,7 +233,7 @@ class DirectLowerer:
                 self._next_aux = 0
                 self.extra_rules = []
                 self.order = OrderLowering(dict(checker.functions), dict(checker.order_sorts), lambda v: None, trial, self.extensions,
-                                           self._deterministic_predicates(blocks))
+                                           self._deterministic_predicates(blocks), self._may_definitions(blocks))
                 try:
                     lowered = [self.lower_block(block) for block in blocks]
                     break
@@ -288,11 +350,72 @@ class DirectLowerer:
                     det.add(name); changed = True
         return det
 
+    def _may_definitions(self, blocks: list) -> dict:
+        """For every predicate defined by rules (choice or not) whose truth depends on a
+        choice, a deterministic over-approximation ``__may_p``: one rule per defining
+        rule, keeping the deterministic body literals, replacing a non-deterministic
+        defined literal by its own ``__may_``, dropping comparisons, and guarding a head
+        variable bound by nothing else with its domain atom. ``p`` is contained in
+        ``__may_p`` in every answer set, so ``__may_p`` may guard the reified comparison
+        Booleans of the dl extension where ``p`` itself, being chosen, may not (Cobra's
+        ``edge`` under the positions lowering: one Boolean per candidate edge, as the
+        SMT baseline has, instead of one per pair of transactions)."""
+        assert self.checker is not None
+        det = self._deterministic_predicates(blocks)
+        rules: dict = {}
+        for block in blocks:
+            for st in getattr(block, "statements", []):
+                if isinstance(st, nodes.Rule):
+                    rules.setdefault(st.head.predicate.name, []).append(st)
+        def text(atom):
+            def t(a):
+                if isinstance(a, nodes.Variable): return a.name
+                if isinstance(a, nodes.Constant): return str(a.value)
+                if isinstance(a, nodes.Identifier): return a.name
+                return None
+            parts = [t(a) for a in atom.args]
+            return None if any(x is None for x in parts) else f"{atom.predicate.name}({', '.join(parts)})" if parts else atom.predicate.name
+        out: dict = {}
+        for name, sts in rules.items():
+            if name in det:
+                continue
+            defs = []
+            for st in sts:
+                head = text(st.head)
+                if head is None:
+                    defs = None; break
+                head_vars = [a.name for a in st.head.args if isinstance(a, nodes.Variable) and a.name != "_"]
+                body, bound = [], set()
+                for l in st.body:
+                    if not isinstance(l, nodes.PredAtom):
+                        continue
+                    lt = text(l)
+                    if lt is None:
+                        continue
+                    if l.predicate.name not in det and l.predicate.name in rules:
+                        lt = "__may_" + lt
+                    elif l.predicate.name not in det:
+                        continue   # neither deterministic nor defined here: no bound available from it
+                    body.append(lt); bound |= {a.name for a in l.args if isinstance(a, nodes.Variable)}
+                info = self.checker.predicates.get(name)
+                for i, a in enumerate(st.head.args):
+                    if isinstance(a, nodes.Variable) and a.name != "_" and a.name not in bound:
+                        sort = info.arg_types[i] if info and i < len(info.arg_types) else None
+                        if not sort or str(sort) == "UNKNOWN":
+                            defs = None; break
+                        body.append(f"dom_{sort}({a.name})")
+                if defs is None:
+                    break
+                defs.append((head, ", ".join(body)))
+            if defs:
+                out[name] = (any(st.is_choice for st in sts), defs)
+        return out
+
     def _acyclic_inlining(self, block: nodes.Block) -> dict:
         """Relations under (\\acyclic r) that are defined only by deterministic rules
         with predicate-atom and comparison bodies in this block and occur nowhere
         else: name -> [(head argument texts, body text)] for inlining into #edge."""
-        acyc = {st.formula.predicate.name for st in block.statements if isinstance(st, nodes.SetConstraint) and isinstance(st.formula, nodes.Acyclic)}
+        acyc = {st.formula.predicate.name for st in block.statements if isinstance(st, nodes.SetConstraint) and isinstance(st.formula, nodes.Acyclic) and self._acyclic_mode(st.formula.predicate.name) == "edge"}
         if not acyc:
             return {}
         used: dict = {n: 0 for n in acyc}
@@ -457,6 +580,15 @@ class DirectLowerer:
             k = info.arity // 2
             def node(terms):
                 return terms[0] if k == 1 else "(" + ", ".join(terms) + ")"
+            if self._acyclic_mode(name) == "closure":
+                # the transitive closure as rules (the "closure in the language" form the
+                # study measured by hand) with irreflexivity as the constraint
+                xs = [f"X{i}" for i in range(k)]; ys = [f"Y{i}" for i in range(k)]; zs = [f"Z{i}" for i in range(k)]
+                tc = f"__tc_{name}"
+                self.extra_rules.append(f"{tc}({', '.join(xs + ys)}) :- {name}({', '.join(xs + ys)}).")
+                self.extra_rules.append(f"{tc}({', '.join(xs + zs)}) :- {tc}({', '.join(xs + ys)}), {name}({', '.join(ys + zs)}).")
+                self.extra_rules.append(f":- {tc}({', '.join(xs + xs)}).")
+                return []
             inl = self._inline_edges.get(name)
             if inl:
                 for head_terms, body in inl:

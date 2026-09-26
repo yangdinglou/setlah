@@ -1,6 +1,7 @@
 """``(\\acyclic r)`` lowers to clingo's ``#edge`` over the relation's edges."""
 import os
 import pytest
+import clingo
 
 from setlah.parsing.parser import Parser
 from setlah.lowering import DirectLowerer
@@ -49,6 +50,36 @@ def test_inlining_mode_all_inlines_a_projecting_rule():
     program = Parser().parse(open(os.path.join(HERE, "acyclic", "polygraph.sl")).read())
     DirectLowerer(acyclic_inlining="none").rewrite_program(program)
     assert "#edge (X0, Y0) : edge(X0, Y0)." in transpile_program_to_asp(program)
+
+
+def _verdict_clingo(asp, facts):
+    ctl = clingo.Control(["--warn=none"]); ctl.add("base", [], asp); ctl.load(os.path.join(HERE, "acyclic", facts)); ctl.ground([("base", [])])
+    return ctl.solve().satisfiable
+
+
+def test_closure_lowering_agrees_with_edge():
+    """``--acyclic-lowering closure``: the transitive closure as rules with an
+    irreflexivity constraint, the form the study measured by hand."""
+    program = Parser().parse(open(os.path.join(HERE, "acyclic", "polygraph.sl")).read())
+    DirectLowerer(acyclic_lowering="closure").rewrite_program(program)
+    asp = transpile_program_to_asp(program)
+    assert "__tc_edge(X0, Z0) :- __tc_edge(X0, Y0), edge(Y0, Z0)." in asp and ":- __tc_edge(X0, X0)." in asp and "#edge" not in asp
+    assert _verdict_clingo(asp, "polygraph_sat.lp") is True and _verdict_clingo(asp, "polygraph_unsat.lp") is False
+
+
+def test_positions_lowering_under_difference_logic():
+    """``--acyclic-lowering positions`` with ``--ext dl``: a function into an order sort,
+    the SMT baselines' integer-positions idiom, one Boolean per candidate edge through
+    the over-approximation __may_edge (not one per pair of nodes)."""
+    from setlah.transpile import run_clingodl_source
+    pytest.importorskip("clingodl")
+    program = Parser().parse(open(os.path.join(HERE, "acyclic", "polygraph.sl")).read())
+    DirectLowerer(acyclic_lowering="positions", extensions=("dl",)).rewrite_program(program)
+    asp = transpile_program_to_asp(program)
+    assert "&diff{ pos_edge(X0) - pos_edge(Y0) } <= -1" in asp and "{ __dl_0(Y0, X0) } :- __may_edge(X0, Y0)." in asp
+    assert "__may_edge(A, B) :- __may_pick(C, K), alt(C, K, A, B)." in asp and "#edge" not in asp
+    assert run_clingodl_source(asp, extra_files=[os.path.join(HERE, "acyclic", "polygraph_sat.lp")]).satisfiable
+    assert not run_clingodl_source(asp, extra_files=[os.path.join(HERE, "acyclic", "polygraph_unsat.lp")]).satisfiable
 
 
 def test_acyclic_over_a_chosen_relation():

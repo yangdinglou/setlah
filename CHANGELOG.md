@@ -12,6 +12,16 @@
 - Difference-logic extension: one reified Boolean per comparison up to variable
   names, shared across sites (complements included), with exclusion lemmas
   between shared Booleans whose bounds cannot both hold.
+- `(\acyclic r)` has three lowerings, `--acyclic-lowering edge|closure|positions`
+  (per relation; `--acyclic-range` for the positions sort): clingo's propagator,
+  the transitive closure as rules, or a function into an order sort with
+  `r(a,b) -> pos(a) < pos(b)` (difference logic with `--ext dl`).
+- Reified comparison Booleans over a derived predicate whose truth depends on a
+  choice are guarded by its deterministic over-approximation `__may_p`.
+- Solver-level lowerings as extensions: `--backend sat` (the ground program
+  completed and decided by a SAT solver through pysat; tight programs only) and
+  `--backend monosat` (the same with MonoSAT's graph theory for `#edge`);
+  `setlah.ext.ground`, `setlah.ext.sat`, `setlah.ext.mono`.
 - Selection `auto` falls from `dl` to `enum` when a comparison is not a
   difference constraint (the chain is rel, dl, enum).
 - `--acyclic-inlining auto|all|none` (per relation `r=all`, env

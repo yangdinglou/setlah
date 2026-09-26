@@ -8,7 +8,7 @@ import io
 
 from setlah import __version__
 from setlah.parsing.parser import Parser
-from setlah.transpile import transpile_program_to_asp, transpile_program_to_clingo, run_clingo_ast, run_clingodl_source
+from setlah.transpile import transpile_program_to_asp, transpile_program_to_clingo, run_clingo_ast, run_clingodl_source, run_sat_source, run_monosat_source
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="SetLaH -> (egg) -> Clingo transpiler (FO only)")
@@ -46,6 +46,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Enable an extension (repeatable): dl, difference logic for order sorts under clingo-dl; default from SETLAH_EXT",
     )
     ap.add_argument(
+        "--acyclic-lowering",
+        default=None,
+        help="Lowering of (\\acyclic r): edge (default: clingo's #edge propagator), closure (transitive closure as rules), positions (a function into an order sort with r(a,b) -> pos(a) < pos(b); difference logic with --ext dl), or per relation (r=closure); default from SETLAH_ACYCLIC_LOWERING",
+    )
+    ap.add_argument(
+        "--acyclic-range",
+        type=int,
+        default=None,
+        help="Range of the positions order sort (default 2^24, or SETLAH_ACYCLIC_RANGE)",
+    )
+    ap.add_argument(
         "--acyclic-inlining",
         default=None,
         help="Inlining of an acyclic relation's defining rules into #edge: auto (default: only projection-free rules), all, none, or per relation (hbc=all); default from SETLAH_ACYCLIC_INLINING",
@@ -58,9 +69,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument(
         "--backend",
-        choices=["auto", "clingo", "clingo-dl"],
+        choices=["auto", "clingo", "clingo-dl", "sat", "monosat"],
         default="auto",
-        help="Solver: clingo, or clingo-dl for programs with order sorts (auto: clingo-dl when the compiled program has &diff atoms)",
+        help="Solver: clingo; clingo-dl for programs with order sorts (auto: clingo-dl when the compiled program has &diff atoms); sat (the ground program completed, decided by a SAT solver through pysat; tight programs only) or monosat (the same with MonoSAT's graph theory for #edge)",
     )
     ap.add_argument(
         "--lowering",
@@ -106,6 +117,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.lowering == "direct":
         front_kwargs["order_lowering"] = args.order_lowering
         front_kwargs["acyclic_inlining"] = args.acyclic_inlining
+        front_kwargs["acyclic_lowering"] = args.acyclic_lowering
+        front_kwargs["acyclic_range"] = args.acyclic_range
         exts = [x for part in args.ext for x in part.split(",") if x] or [x for x in os.environ.get("SETLAH_EXT", "").split(",") if x]
         front_kwargs["extensions"] = tuple(exts)
     rw = front(**front_kwargs)
@@ -141,6 +154,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     asp_source = transpile_program_to_asp(rewritten, grounding=args.grounding)
+    if args.backend in ("sat", "monosat"):
+        if args.verbose:
+            print(f"Transpiling time: {time.perf_counter() - t0:.3f}s")
+            print()
+        run = run_sat_source if args.backend == "sat" else run_monosat_source
+        res = run(asp_source, extra_files=list(args.facts), on_model=lambda atoms: print(" ".join(atoms)))
+        print("SATISFIABLE" if res.satisfiable else "UNSATISFIABLE")
+        if args.verbose:
+            print(" ".join(f"{k}={v}" for k, v in res.stats.items()))
+        return 0 if res.satisfiable else 10
     use_dl = args.backend == "clingo-dl" or (args.backend == "auto" and "&diff{" in asp_source)
     if use_dl:
         if args.verbose:
