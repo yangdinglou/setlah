@@ -743,10 +743,19 @@ dl extension) and MonoSAT; the recursion-free benchmarks (EPR queries of
 DuoAI and mypyvy, TPTP's decided problems, OLSQ, DPQA's enumerated and
 relational lowerings, Pusharoo's enumerated queries) under clingo and the
 SAT backend from the same compiled program. Results in the study's notes
-(`ports/*/NOTES.md`, "Lowerings in the plural") and its dossier. First
-rows: Cobra's 65 polygraphs, `closure` 65 of 65 identical with 54.5 s on
-the largest (the hand-measured figure reproduced) against 1.81 s for
-`edge`.
+(`ports/*/NOTES.md`, "Lowerings in the plural") and its dossier. Summary (decided counts per cell, edge / closure / positions / MonoSAT
+backend, and the hand-made baseline): Cobra 65 / 65 / 65 / 65, the
+compiled program under MonoSAT 6.9 s on the largest against Cobra's
+hand-written MonoSAT 62.5 s and CobraSAT's Z3 positions timeout; dense
+polygraphs 9 / – / 6 / 10 against Cobra's MonoSAT 13 (grounding-bound in
+every compiled cell); snapshot isolation 28 / 8 / 6 / 15 against PolySI
+35; VCh-rf 60 / – / 57 / 60 against SMT-Sat 5; deadlocks, every cell
+SPD's counts. The SAT backend agrees with clingo on 934 EPR queries, 13
+OLSQ depths, 38 Pusharoo queries and 173 of 174 TPTP EPR problems, and
+reaches Z3's band on DPQA's relational lowering (3.5, 56, 11.8 s against
+clingo's 4.0, 264, 5.7 s) but not on the one-hot enumeration (822 s
+against 119 s). The closure lowering reproduces the study's hand
+measurement to the decimal (54.5 s on tpcc-1000).
 
 ### 12.4 Not done, and why
 
