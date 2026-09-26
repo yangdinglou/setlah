@@ -219,7 +219,7 @@ and `L_lad` is kept as an option:
 
 | lowering | condition on the uses of `O` in `M` | evidence |
 |---|---|---|
-| `L_edge` | one constraint `R(a,b) → f(a) < f(b)`, nothing else; range ≥ domain size | VCh-rf positions: closure in the language 54 s, `#edge` 1.8 s on the largest Cobra polygraph; SI layered acyclicity `ports/isolation/NOTES.md` |
+| `L_edge` | one constraint `R(a,b) → f(a) < f(b)`, nothing else; range ≥ domain size; reached through `(\acyclic r)`, whose own lowerings are Section 12.1 | VCh-rf positions: closure in the language 54 s, `#edge` 1.8 s on the largest Cobra polygraph; SI layered acyclicity `ports/isolation/NOTES.md` |
 | `L_dl` | comparisons and constant offsets only (any frame, any bound) | DPQA at or ahead of Z3 on five of six graphs from the one-file model (`ports/dpqa/run-ordsorts`, shared Booleans); Pusharoo 274 of 300 exact; TSN ahead of Z3 to 128 streams (`ports/tsn/run-dl`) |
 | `L_rel` | comparisons without offsets, elements in one frame, and the frame small (elements ≤ about 100, since transitivity is cubic) | DPQA `run-relorder`: in Z3's band to 18 qubits, 100× one-hot |
 | `L_enum` | values are arguments of relations over the sort, or the sort is small and the model is not search-bound | OLSQ time steps (level with the expert, 60 s → 0.4 s against Z3); every domain of the first three weeks |
@@ -649,3 +649,116 @@ The compiler takes the form that is never worse by much, and
 of the projected variables would make the choice automatic. The three layered rules of the
 snapshot-isolation model are projection-free and their inlined form matches
 the hand-attached program.
+
+## 12. Lowerings in the plural: per feature and per solver (2026-09-26)
+
+Owner's framing: the order sort is not the only construct that admits
+several lowerings. A SetLah! program has many compilations, and the
+compiler should be able to try them all: a program without recursion can
+go to SAT, one without choice to Datalog, and acyclicity has, besides
+`#edge`, the transitive closure as rules and the integer positions of the
+SMT baselines, or MonoSAT's graph theory. Two axes, then: **feature-level
+lowerings** (how a construct becomes rules) and **solver-level lowerings**
+(which system decides the rules). Every baseline the study beat or lost to
+is one cell of this matrix, produced by hand; the compiler now produces
+the cells from one model text.
+
+### 12.1 Acyclicity: three feature-level lowerings
+
+`(\acyclic r)`, `--acyclic-lowering edge|closure|positions` (per relation
+`r=closure`; env `SETLAH_ACYCLIC_LOWERING`):
+
+| lowering | emitted | correctness |
+|---|---|---|
+| `edge` (default) | `#edge (X, Y) : r(X, Y).` (k-tuple nodes for arity 2k; projection-free defining rules inlined) | clingo's propagator accepts an answer set iff the chosen edges are acyclic (T5) |
+| `closure` | `__tc_r(X, Y) :- r(X, Y). __tc_r(X, Z) :- __tc_r(X, Y), r(Y, Z). :- __tc_r(X, X).` | `__tc_r` is the transitive closure of `r` in every stable model (least fixpoint of positive rules), and `r` is acyclic iff its closure is irreflexive |
+| `positions` | `OrdDOM Pos_r: 0..N. Fun pos_r: (S..) -> Pos_r.` and the constraint `r(a, b) -> pos_r(a) < pos_r(b)`, then the order-sort lowering of `Pos_r` (`dl` when the extension is enabled, else `enum`; `--acyclic-range N`, default 2^24) | a strict order with `r(a, b) -> f(a) < f(b)` exists iff `r` is acyclic and its longest path is shorter than `N` (T5's argument); the sort is then lowered by T4 or T1 |
+
+The `positions` rewrite runs on the AST after the first semantic check and
+re-checks; the node sorts are the relation's argument sorts (an unknown
+sort, as the layer constants of the snapshot-isolation relation, leaves the
+range atoms ungrounded, which is the relaxed unbounded reading, still
+correct for acyclicity). The guard problem it raised: the reified Boolean
+of `pos_r(a) < pos_r(b)` may not be guarded by `r(a, b)` when `r` is
+derived from a choice (Section 7), and guarding it by the domains gives one
+Boolean per pair of nodes (1.5 M on a 1,243-transaction polygraph). The
+compiler therefore computes, for every predicate defined by rules whose
+truth depends on a choice, a deterministic over-approximation `__may_p`:
+one rule per defining rule, deterministic body literals kept, a
+non-deterministic defined literal replaced by its own `__may_`, comparisons
+dropped, unbound head variables guarded by their domains. `p ⊆ __may_p` in
+every answer set, so `__may_p` is a sound guard, and on Cobra it is
+`__may_edge(A, B) :- __may_pick(C, K), alt(C, K, A, B)`: one Boolean per
+candidate edge, the SMT baseline's encoding exactly.
+
+### 12.2 Solver-level lowerings: SAT and MonoSAT as extensions
+
+`--backend sat|monosat` (`setlah.ext.ground`, `setlah.ext.sat`,
+`setlah.ext.mono`). The compiled ASP program is grounded by clingo's
+grounder and captured through the observer interface (normal and choice
+rules, weight rules from aggregates, `#edge` conditions, output symbols);
+Clark's completion turns it into clauses; cardinalities become sequential
+counters (pysat) in both directions (`h <-> #true >= k`); the clauses go to
+a SAT solver (cadical through pysat) or to MonoSAT, where every `#edge`
+becomes an edge of one graph whose literal is equivalent to the edge's
+condition, under the `acyclic` predicate. A program that is not tight
+(a positive cycle through the ground rules), has an objective, a theory
+atom or a disjunctive rule is refused with the reason; plain SAT also
+refuses `#edge` (no compact propositional acyclicity; the positions or
+closure lowering is the way to it, and the closure is not tight).
+
+**T7 (completion).** For a tight ground program `P` (no cycle in the
+positive dependency graph, choice bodies counted as positive dependencies),
+the models of `Comp(P)` restricted to the atoms of `P` are exactly its
+stable models (Fages 1994; Erdem and Lifschitz 2003 for the extension to
+choice and weight rules, which the encoding treats as: a choice rule's head
+atom is supported by its body without being forced, a weight rule's head is
+equivalent to the cardinality of its body). The auxiliary variables for
+conjunctive bodies and cardinalities are definitional, so the restriction
+is a bijection. *Proof of the encoding's fidelity.* For each atom `a`,
+`Comp(P)` has `a <-> ∨_i B_i` over its rule bodies; the encoder emits
+`b_i <-> ∧ B_i` (or the single literal), `b_i -> a` for the normal rules,
+and the support clause `¬a ∨ ∨ b_i ∨ ∨ c_j` where `c_j` are the choice
+bodies (`c_j -> a` is not emitted, which is the choice); an atom with a
+fact rule is a unit clause, one with no rule is false; a constraint is the
+clause of its negated body; a weight rule's head `h` gets `h <-> Σ ≥ lb`
+through `atleast` conditioned on `h` and `atmost(lb − 1)` conditioned on
+`¬h`. Each clause set is the definition of the corresponding formula of
+`Comp(P)`. ∎
+
+**T8 (edges).** `AS(P ∪ E)`, `E` a set of `#edge (u, v) : B` directives,
+equals the stable models `X` of `P` in which `{(u, v) : B ⊆ X}` is acyclic
+(clingo's definition of the propagator). MonoSAT with `e_uv <-> ∧ B` for
+each directive and `acyclic(G)` asserted accepts exactly the assignments in
+which the true edges form an acyclic graph, which is the same set. ∎
+
+Composition: with T7 for the Boolean part and T8 for the edges, the
+MonoSAT backend decides exactly the stable models of the compiled program
+with `#edge`; the SAT backend those of a program without `#edge`.
+
+### 12.3 What is measured (applications study, 2026-09-26)
+
+The four acyclicity domains under `edge`, `closure`, `positions` (with the
+dl extension) and MonoSAT; the recursion-free benchmarks (EPR queries of
+DuoAI and mypyvy, TPTP's decided problems, OLSQ, DPQA's enumerated and
+relational lowerings, Pusharoo's enumerated queries) under clingo and the
+SAT backend from the same compiled program. Results in the study's notes
+(`ports/*/NOTES.md`, "Lowerings in the plural") and its dossier. First
+rows: Cobra's 65 polygraphs, `closure` 65 of 65 identical with 54.5 s on
+the largest (the hand-measured figure reproduced) against 1.81 s for
+`edge`.
+
+### 12.4 Not done, and why
+
+- **Datalog as a target.** A choice-free stratified program has one
+  model, which a Datalog engine computes; the study's one use is the
+  saturation pre-pass of VCh-rf, where the closure computed outside the
+  grounder took the arm from 39 of 56 to 56 of 56 (as facts from the
+  artifact's own saturation). Emitting the choice-free fragment to a
+  Datalog engine is a day's work with that one datapoint behind it.
+- **Positions under plain SAT.** The order encoding (`L_lad`, appendix) is
+  the lowering that makes positions propositional in O(N) per node and
+  per edge; it is not implemented (the enumeration is one-hot and
+  quadratic), so the SAT backend's acyclicity route is MonoSAT.
+- **Non-tight programs to SAT** need loop formulas (ASSAT) or a CEGAR
+  loop; out of scope, the ASP backend is the general one.

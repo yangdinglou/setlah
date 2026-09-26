@@ -75,6 +75,15 @@ The transitive closure of the binary relation is irreflexive; lowered to
 clingo's `#edge` propagator. A relation of arity 2k has k-tuples as nodes
 (the first k arguments the source), for layered encodings.
 
+The construct has three lowerings, `--acyclic-lowering edge|closure|positions`
+(per relation `r=closure`): clingo's `#edge` propagator (default), the
+transitive closure as rules with an irreflexivity constraint, or a total
+function into an order sort with `r(a, b) -> pos(a) < pos(b)` (difference
+logic with `--ext dl`). Independently of the lowering, `--backend
+sat|monosat` decides the compiled program by a SAT solver (the ground
+program completed; tight programs only) or by MonoSAT, whose graph theory
+takes the `#edge` directives; `docs/order-sorts.md`, Section 12.
+
 ## Aggregates
 
 Projection variables appear in parentheses after a set predicate:
