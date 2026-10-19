@@ -10,8 +10,13 @@ of the commit named below, so a reproduction only needs the commit.
 
 | Purpose | Ref | Commit |
 |---|---|---|
-| Every compiled cell of the PLDI 2027 submission (order sorts, acyclicity lowerings, SAT and MonoSAT backends, the final sweep) | tag `paper-pldi27` | `ef262db` |
+| The paper's compiler: the acyclicity matrix, the order-sort tables, the SAT and MonoSAT backends, and the final sweep (the cells the paper marks as compiler output on ef262db) | tag `paper-pldi27` | `ef262db` |
 | The Pusharoo bounded-translation and CoCoMoT bound-sweep rows (`--split-width 3`) | tag `study-split-width` (branch `grounding-split`) | `fd2b624` |
+
+Not every cell the paper cites ran on ef262db. The compiled column of the paper's "attachments" table ran on
+`32b5b8a`, PORTUS on `48a53f1`, the OLSQ rows on `bc0e5c7`, and the attached arms on `4df62c7`; the tables below say
+which. The study repository's `PROVENANCE.md` maps every table of record to its snapshot, and its
+`reproduce/make_snapshots.sh` rebuilds all of them from this repository.
 
 The tip of `order-sorts` (and of `direct-lowering`, the same commit) differs
 from `ef262db` only in documentation and packaging metadata: the code and
@@ -44,15 +49,17 @@ the commit of the same short name on branch `order-sorts` or `direct-lowering`
 | `67a708c` | inline only projection-free rules | |
 | `23dba42` | dl: guard by fact literals only | TSN and JDBCMySQL-1 measurements |
 | `c92c701` | renderer drops unused dom projections | |
-| `32b5b8a` | dl: guards are deterministic literals or domain atoms | the compiler-output tables of 2026-09-23 |
-| `dc0607f` | dl: shared reified Booleans, exclusion lemmas | the DPQA one-file table |
+| `32b5b8a` | dl: guards are deterministic literals or domain atoms | the compiler-output tables of 2026-09-23: the compiled column of the paper's "attachments" table, the TSN source model (4.1 s, 436 s), the DPQA enumeration column |
+| `dc0607f` | dl: shared reified Booleans, exclusion lemmas | the DPQA one-file table, whose `auto` and `dl` rows are the paper's unshuffled fact order (the programs are byte-identical to ef262db's) |
 | `f41e353` | `--acyclic-inlining auto/all/none` | the VCh-rf inlined run |
 | `6798d1d` | selection: dl falls back to enum under auto | the Pusharoo order-sort table |
 | `ef262db` | acyclicity lowerings, `__may_` guards, sat and monosat backends | everything in the paper |
 
-Two older copies: the study's `setlah-direct` is `4df62c7` (direct-lowering tip
-of 2026-09-08) and `setlah-frozen` is `e6a6b66` (lean4-binding tip of 2026-09-05,
-the egglog-era compiler used for the study's first three weeks).
+Three older copies: the study's `setlah-direct` is `4df62c7` (direct-lowering tip
+of 2026-09-08; the attached arms and the DPQA negative entry), `setlah-frozen` is
+`e6a6b66` (lean4-binding tip of 2026-09-05, the egglog-era compiler used for the
+study's first three weeks), and `setlah-bc0e5c7` is `bc0e5c7` (lean4-binding,
+2026-09-03; the OLSQ tables, and the only snapshot commit already on the public remote).
 
 ## Optional solvers and versions
 
