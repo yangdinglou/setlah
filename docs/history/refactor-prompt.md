@@ -11,7 +11,7 @@ The goal is to replace the egglog-based front half of the compiler with a
 direct, syntax-directed lowering, without changing what the compiler
 accepts or what the ASP renderer emits. Start by reading, in this order:
 
-1. `docs/refactor-brief.md` — what egglog does today, why it is being
+1. `docs/history/refactor-brief.md` — what egglog does today, why it is being
    replaced, the measured scope boundary, the two-track plan, and the
    regression suite with expected counts. Treat it as the specification.
 2. `docs/known-issues.md` — defects B1 to B7 with mechanisms, line references

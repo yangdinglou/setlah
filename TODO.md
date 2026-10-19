@@ -192,17 +192,18 @@ study keeps its own stand-ins (clingo API around the compiled program).
   whose width does not ground (Pusharoo); a node-by-node derived-predicate
   lowering grounds all 291 sampled queries (`../setlah-apps/ports/pusharoo/NOTES.md`).
 - [ ] Decide the `grounding-split` branch (rule decomposition, `--split-width`),
-  verdict-preserving on every corpus; the CoCoMoT arm needs it.
+  verdict-preserving on every corpus; the CoCoMoT arm needs it. (Committed on
+  2026-10-19 as `fd2b624`, tag `study-split-width`; merging is still open.)
 
 ### Language features, ranked by what they would have won
 
-1. [ ] **Acyclicity and closure as built-ins with a compact order
+1. [x] **Acyclicity and closure as built-ins with a compact order
    representation.** VCh-rf: `#edge` removed the cubic closure; the
    remaining wall was the closure over event pairs, and the closure computed
    outside the grounder (earliest-successor vectors) took the arm from 39 to
    56 of 56 on the shared list and from 36 to 60 of 63 on the consistent set,
    ahead of SMT-Sat (5 of 63 on the same machine).
-2. [ ] **An order theory or integer positions for the part a closure leaves
+2. [x] **An order theory or integer positions for the part a closure leaves
    free** (VCh-rf's ccache family; clingo-dl-style propagation).
 3. [ ] **Optimisation**: `#minimize`/`#maximize`, weighted `#sum`, priorities
    (CoCoMoT cost bound sweep, Mockdown objective).
@@ -220,7 +221,7 @@ study keeps its own stand-ins (clingo API around the compiled program).
 Recorded in detail in `setlah-apps/corpus/feature-delta.md`; the manual
 attachments used as stand-ins are the evidence that each is needed.
 
-- [ ] **Acyclicity built-in.** Three domains (serializability, snapshot
+- [x] **Acyclicity built-in** (done: `(\acyclic r)` with three lowerings). Three domains (serializability, snapshot
   isolation, predictive deadlocks) attach clingo's `#edge` to the compiled
   program; with it the SetLah! arm equals the expert arm, without it the
   closure written in the language costs 30x (Cobra) or does not ground.

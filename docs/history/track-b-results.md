@@ -5,7 +5,7 @@ egglog front half, both on the same back half, on the same checkout, through
 the study's runners with `SETLAH_LOWERING=direct`. Output directories in
 setlah-apps are suffixed `-direct`; the egglog re-runs after the B10 back-half
 fix are suffixed `-trackB-egglog`. The machine was shared between runs, so
-times are indicative. Track A's numbers are in `docs/track-a-results.md`.
+times are indicative. Track A's numbers are in `docs/history/track-a-results.md`.
 
 ## Acceptance: the regression table with `--lowering direct`
 
@@ -29,7 +29,7 @@ No verdict differs between the two front halves on any runner.
 ### PORTUS sample under the direct lowering
 
 `ports/portus/auto-sample12-direct.txt` in setlah-apps; the egglog columns
-are from `docs/track-a-results.md`.
+are from `docs/history/track-a-results.md`.
 
 | command | egglog: compile, raw, verdict | direct: compile, raw, verdict |
 |---|---|---|

@@ -20,6 +20,12 @@ installation instructions belong in `README.md` and `docs/`.
 - `python-binding`: ergonomic Python embedding API and Python tutorial. It is
   based on `binding-core`.
 
+- `direct-lowering` / `order-sorts` (same commit): the direct lowering, order sorts,
+  `(\acyclic r)` and the solver backends (`setlah.ext`); tag `paper-pldi27` marks the
+  commit the published evaluation used.
+- `grounding-split`: the rule-decomposition pass (`--split-width`), tag
+  `study-split-width`.
+
 When a change is useful to both bindings, implement it in `binding-core` first.
 Do not add Python embedding API work to `lean4-binding`, or Lean sources and
 Lake configuration to `python-binding`.
@@ -51,7 +57,10 @@ listed there.
 
 - Python is the canonical implementation of SetLaH parsing, checking,
   rewriting, ASP generation, grounding, and solving.
-- Preserve the pipeline: `parsing` -> `rewrite` -> `transpile` -> Clingo.
+- Preserve the pipeline: `parsing` -> `lowering` (direct; `rewrite` is the deprecated
+  egglog front half) -> `transpile` -> a solver backend (Clingo by default).
+- Do not change the code of a commit the evaluation cites (`docs/reproducibility.md`);
+  fix forward on a new commit.
 - Preserve existing CLI behavior unless the task explicitly changes it.
 - Use structured AST, Clingo, and JSON APIs instead of parsing rendered output
   or rewriting structured data with ad hoc string operations.

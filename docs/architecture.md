@@ -10,13 +10,27 @@ SetLaH AST
     | front half: direct lowering (default) or rewriting (egglog, deprecated, --lowering egglog)
     v
 IR: rules and constraints (IRRule / IRConstraint), auxiliary rules
+    | order sorts (lowering/order.py): enum, rel, or dl (extension ext/dl.py)
+    | acyclicity: #edge, closure rules, or positions (an order sort)
     | transpilation and post-processing (shared by both front halves)
     v
-Clingo ASP
-    | solving (optional)
+Clingo ASP (with &diff atoms under --ext dl)
+    | solving (optional): clingo, clingo-dl (ext/dl.py),
+    |   SAT via completion (ext/ground.py, ext/sat.py), MonoSAT (ext/mono.py)
     v
 answer sets
 ```
+
+Order sorts (`OrdDOM`, `Fun`) are lowered by a pass over the direct
+lowering's cubes and rule bodies (`src/setlah/lowering/order.py`): enumeration,
+a chosen total preorder, or, with the `dl` extension, reified comparison
+Booleans with `&diff` atoms; `auto` selects per sort from the model text.
+`(\acyclic r)` is lowered in `src/setlah/lowering/lower.py`: an `#edge`
+directive (inlining projection-free defining rules), the transitive closure
+as rules, or an AST rewrite to a positions order sort. The solver backends in
+`src/setlah/ext/` capture the ground program through Clingo's observer
+interface; `docs/order-sorts.md` gives the semantics and the correctness
+argument of every lowering.
 
 The egglog front half (deprecated) lowers first-order and set constructs by
 equality saturation, introduces auxiliary predicates and splits conjunctions into
@@ -35,8 +49,12 @@ src/setlah/
 |-- ast/          AST dataclasses
 |-- parsing/      grammar, parser, transformer, and semantic checker
 |-- rewrite/      egglog schema, rewrite rules, and AST conversion
-|-- lowering/     direct syntax-directed lowering to the transpiler IR
-`-- transpile/    ASP IR, lowering, safety, rendering, and Clingo execution
+|-- lowering/     direct syntax-directed lowering to the transpiler IR;
+|                 order.py lowers order sorts, lower.py also lowers (\acyclic r)
+|-- ext/          extensions: dl.py (difference logic, clingo-dl), ground.py
+|                 (ground-program capture and Clark's completion), sat.py (PySAT),
+|                 mono.py (MonoSAT)
+`-- transpile/    ASP IR, lowering, safety, rendering, and solver execution
 ```
 
 Important entry points are:
@@ -65,3 +83,8 @@ Important entry points are:
 - [egglog](https://github.com/egraphs-good/egglog) performs equality-saturation
   rewriting.
 - [Clingo](https://potassco.org/clingo/) grounds and solves generated ASP.
+- Optional: [clingo-dl](https://github.com/potassco/clingo-dl) for `--ext dl`,
+  [PySAT](https://pysathq.github.io/) for `--backend sat|monosat`, and
+  [MonoSAT](https://github.com/sambayless/monosat) for `--backend monosat`.
+- egglog is used only by the deprecated front half and by the tests, which
+  use it as a differential oracle.

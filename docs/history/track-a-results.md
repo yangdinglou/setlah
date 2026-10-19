@@ -1,6 +1,6 @@
 # Track A results (2026-09-07, branch `direct-lowering`)
 
-The "fix in place" track of `docs/refactor-brief.md`: B7, B5 and B2 fixed
+The "fix in place" track of `docs/history/refactor-brief.md`: B7, B5 and B2 fixed
 in the existing egglog pipeline, plus B8 found by the author during the
 same day. Commits, in order: `fd5ca93` (B7), `b4c7661` (B5), `0be936a`
 (B2, harness shapes), `f756e4d` (B8). Mechanisms and reproducers are in

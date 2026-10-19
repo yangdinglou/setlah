@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased (branch order-sorts)
+All notable changes to SetLaH will be documented in this file.
+
+## [Unreleased]
+
+The rule-decomposition pass (`--split-width N`) is on branch `grounding-split`
+(tag `study-split-width`), not on this branch.
+
+### Added (branch order-sorts: order sorts, acyclicity, solver backends)
 
 - Difference-logic extension: reified comparison Booleans are guarded by the
   cube's deterministic literals (facts and what non-choice rules derive from
@@ -30,11 +37,7 @@
 - `(\acyclic r)`: a constraint that the relation `r` has an irreflexive transitive closure, lowered to `#edge` (relations of arity 2k have k-tuples as nodes); four ports of the applications study attached this by hand; a relation defined only by rules and used nowhere else is inlined into one `#edge` per rule instead of being grounded.
 - Order sorts: `OrdDOM` and `Fun` declarations with two core lowerings in plain ASP, enumeration (`enum`, the basic one) and a preorder relation (`rel`), the selection rule as the default (`auto`), and difference logic as an extension (`--ext dl`, `setlah.ext.dl`, run under clingo-dl through `--backend auto`); `--order-lowering` selects per sort (`X=rel,C=dl`); design and theorems in `docs/order-sorts.md`.
 
-All notable changes to SetLaH will be documented in this file.
-
-## [Unreleased]
-
-### Added
+### Added (direct lowering)
 
 - A second front half, `--lowering direct` (`src/setlah/lowering/`): a
   syntax-directed lowering of SetLaH to the transpiler's IR without egglog.
@@ -45,7 +48,7 @@ All notable changes to SetLaH will be documented in this file.
   disjunctions of conjunctions, deep nesting, wide existentials). It is
   the default; `--lowering egglog` (or `SETLAH_LOWERING=egglog`) selects
   the previous front half, which is deprecated and will be removed in a
-  later release. See `docs/track-b-results.md`,
+  later release. See `docs/history/track-b-results.md`,
   `docs/retire-egglog-proposal.md` and `docs/known-issues.md`.
 
 - Direct lowering: `dom_<Sort>(X) :- p(.., X, ..)` projection rules for every
@@ -126,7 +129,7 @@ All notable changes to SetLaH will be documented in this file.
   predicate's signature across its rules so the variable's domain is known
   from the sibling rule that does bind it. See `docs/known-issues.md` (B3).
 
-### Added
+### Added (defect register)
 
 - `docs/known-issues.md`: compiler defects found by compiling third-party
   finite-domain problems (DuoAI and mypyvy verification queries, Alloy commands

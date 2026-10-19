@@ -66,7 +66,7 @@ The supplied board is already solved and uses a move bound of zero.
 ./examples/check.sh
 ```
 
-The script prints `SAT` or `UNSAT` for each expected result and exits nonzero if
+The script prints `SAT` for each example that has an answer set and exits nonzero if
 a command fails or produces the wrong status.
 
 Input files are ordinary Clingo programs. To add an instance, provide all

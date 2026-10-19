@@ -6,7 +6,7 @@ selectable with a deprecation warning. Steps 2 to 4 are not performed.
 
 ## What the data says
 
-`docs/track-b-results.md` has the measurements. In short: with
+`docs/history/track-b-results.md` has the measurements. In short: with
 `--lowering direct` every runner of the regression suite reproduces the
 same verdict counts as the egglog path, the three concurrency models
 compile in under a second, the PORTUS sample compiles whole in seconds
@@ -52,7 +52,7 @@ construction, in 700 lines against 3,500.
 ## What to decide first
 
 - Whether equality saturation is a claimed contribution of the paper. If
-  it is, the comparison in `docs/track-b-results.md` is the data for the
+  it is, the comparison in `docs/history/track-b-results.md` is the data for the
   claim either way, and the egglog path should stay as the artifact of
   that claim rather than be deleted. If it is an implementation choice,
   step 1 can happen now.

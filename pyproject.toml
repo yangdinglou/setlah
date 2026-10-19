@@ -31,6 +31,14 @@ dev = [
     "pytest>=8",
     "twine>=5",
 ]
+# Optional solver backends (versions pinned to the ones the published measurements used).
+# MonoSAT (--backend monosat) is not on PyPI; see README.md for the source build.
+dl = [
+    "clingo-dl==1.5.0.post1",
+]
+sat = [
+    "python-sat==1.9.dev15",
+]
 
 [project.scripts]
 setlah = "setlah.cli:main"

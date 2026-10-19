@@ -198,7 +198,7 @@ with instances.
 new, pre(V))` under the witness guards) still falls back; the strict xfail
 `test_b2_ite_frame_equality_is_lowered` stays. That is the shape behind the
 130 of 142 DuoAI and 568 of 792 mypyvy plain-translation fallbacks, and it
-is what the direct lowering (Track B of `docs/refactor-brief.md`) is for:
+is what the direct lowering (Track B of `docs/history/refactor-brief.md`) is for:
 the underlying fragility is a normalisation that needs a chain of n
 sequential rewrites inside a budgeted, throttled saturation, which no
 schedule makes monotone. The fallback also still exits 0.

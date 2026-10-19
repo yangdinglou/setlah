@@ -18,9 +18,10 @@ Const n: INT = 4.
 - `ExtPred` declares a predicate supplied by an input fact file.
 - `Const` declares a constant.
 - `OrdDOM X: 0..15.` declares an order sort: a bounded integer sort whose
-  values occur only in comparisons and constant offsets; `Fun f: (Q, S) -> X.`
-  declares a total function into it, written in models as the predicate
-  `f(Q, S, X)`. Order sorts are lowered in plain ASP by enumeration (`enum`, the basic
+  values occur only in comparisons (`=`, `!=`, `<`, `<=`, `>`, `>=`) between two
+  function terms, one of which may carry a constant offset, as in
+  `(<= (+ X1 D) X2)`; `Fun f: (Q, S) -> X.` declares a total function into it
+  (at least one argument sort), written in models as the predicate `f(Q, S, X)`. Order sorts are lowered in plain ASP by enumeration (`enum`, the basic
   lowering) or as a preorder relation (`rel`, chosen automatically when
   every comparison is between two values without offsets), and, with the
   extension `--ext dl`, to difference logic under clingo-dl
