@@ -74,8 +74,12 @@ class DirectLowerer:
     #: auxiliary predicates instead of being distributed.
     MAX_DNF_CUBES = 32
 
-    def __init__(self, verbose: bool = False, *, entailment_elim: str = "asp", enable_cost_conversion: bool = False):
+    def __init__(self, verbose: bool = False, *, entailment_elim: str = "asp", enable_cost_conversion: bool = False, split_width: int = 0):
         self.verbose = verbose
+        #: rule decomposition: an integrity constraint whose cube has more than this many variables is
+        #: split along a tree decomposition of its variable graph (lpopt's construction); 0 disables it
+        self.split_width = split_width
+        self.split_count = 0
         self.entailment_elim = entailment_elim
         self.checker: SemanticChecker | None = None
         self.builder: NNFBuilder | None = None
@@ -214,6 +218,8 @@ class DirectLowerer:
         violation = self._bound(violation)
         out: list[IRConstraint] = []
         for cube in dnf(violation):
+            if self.split_width > 0:
+                cube = self._split_cube(cube)
             lits = [self.item(it) for it in cube]
             if not lits:
                 # the constraint is unsatisfiable: an always-violated integrity constraint
@@ -319,6 +325,8 @@ class DirectLowerer:
         self._next_aux += 1
         head = f"{name}({', '.join(fv)})" if fv else name
         for cube in dnf(self._bound(body)):
+            if self.split_width > 0:
+                cube = self._split_cube(cube, keep=frozenset(fv))
             lits = [_general_lit_to_body_lit(self.item(it)) for it in cube]
             bound = self._positively_bound(cube)
             guards = []
@@ -328,6 +336,73 @@ class DirectLowerer:
             lits = guards + lits
             self.aux_rules.append(f"{head} :- {', '.join(lits) if lits else '#true'}.")
         return name, fv
+
+    # --- rule decomposition ---------------------------------------------------
+
+    def _split_cube(self, cube: list, keep: frozenset = frozenset()) -> list:
+        """Rule decomposition of one integrity-constraint cube (``:- item_1, ..., item_n``).
+
+        The cube's variable graph joins two variables that share an item. A
+        min-fill elimination order gives a tree decomposition; the bag of each
+        eliminated variable takes the items whose variables it covers, becomes
+        a rule ``__aux_k(separator) :- guards, items, child temporaries`` over
+        its separator (the eliminated variable's neighbours), and the root bag
+        stays the constraint. Grounding then costs about d^(treewidth+1) per
+        rule instead of d^(variables) (Bichler, Morak, Woltran, lpopt). The
+        program is a conservative extension: the temporaries are defined
+        positively, so answer sets projected to the original signature are
+        unchanged. Cubes with at most ``split_width`` variables are returned
+        as they are. Variables in ``keep`` (the head variables of a rule whose
+        body the cube is) are never eliminated, so they stay in the root bag
+        and the head remains bound by the root's body."""
+        items = list(cube)
+        var_of = [set(free_vars(it)) for it in items]
+        allv = set().union(*var_of) if var_of else set()
+        if len(allv) <= self.split_width or len(items) < 2:
+            return items
+        adj: dict = {v: set() for v in allv}
+        for vs in var_of:
+            for x in vs:
+                adj[x] |= vs - {x}
+        g = {v: set(n) for v, n in adj.items()}; order: list = []
+        # kept variables (a rule's head) are never eliminated: they form the root bag, so the head stays
+        # bound by the root's own body and no temporary projects a head variable away
+        while any(v not in keep for v in g):
+            def fill(v: str) -> int:
+                nb = list(g[v]); return sum(1 for i, x in enumerate(nb) for y in nb[i + 1:] if y not in g[x])
+            cands = [v for v in g if v not in keep]
+            v = min(sorted(cands), key=lambda v: (fill(v), len(g[v])))
+            nb = set(g[v]); order.append((v, nb))
+            for x in nb:
+                g[x] |= nb - {x}; g[x].discard(v)
+            del g[v]
+        root_size = len(set(g)) + 0   # the kept variables left in the graph
+        if not order or max([len(nb) + 1 for _, nb in order] + [root_size]) >= len(allv):
+            return items   # no decomposition narrows it
+        remaining = list(range(len(items))); temps: list = []   # (predicate name, separator vars)
+        for i, (v, nb) in enumerate(order):
+            bag = nb | {v}
+            mine = [k for k in remaining if var_of[k] <= bag]; remaining = [k for k in remaining if k not in mine]
+            kids = [t for t in temps if set(t[1]) <= bag]; temps = [t for t in temps if t not in kids]
+            if (i == len(order) - 1 and not keep) or (not remaining and not temps and not mine and not kids):
+                remaining_items = [items[k] for k in remaining] + [items[k] for k in mine]
+                return remaining_items + [Lit(PredA(n, tuple(nodes.Variable(name=x) for x in sv)), True) for n, sv in temps + kids]
+            if not mine and not kids:
+                continue
+            sep = sorted(nb)
+            body_items = [items[k] for k in mine]
+            name = f"__aux_{self._next_aux}"; self._next_aux += 1; self.split_count += 1
+            lits = [_general_lit_to_body_lit(self.item(it)) for it in body_items]
+            lits += [f"{n}({', '.join(sv)})" if sv else n for n, sv in kids]
+            bound = self._positively_bound(body_items) | {x for _, sv in kids for x in sv}
+            # every variable of the bag must be bound positively in its rule: the separator (head) and any
+            # variable that the bag mentions only under negation or in a comparison
+            bag_vars = set(sep) | set().union(*[var_of[k] for k in mine]) if mine else set(sep)
+            guards = [f"dom_{self._var_types[x]}({x})" for x in sorted(bag_vars) if x not in bound and x in self._var_types]
+            head = f"{name}({', '.join(sep)})" if sep else name
+            self.aux_rules.append(f"{head} :- {', '.join(guards + lits) if (guards or lits) else '#true'}.")
+            temps.append((name, sep))
+        return [items[k] for k in remaining] + [Lit(PredA(n, tuple(nodes.Variable(name=x) for x in sv)), True) for n, sv in temps]
 
     @staticmethod
     def _positively_bound(cube: list) -> set:

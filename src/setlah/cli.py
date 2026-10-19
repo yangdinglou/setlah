@@ -40,6 +40,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--clingo-arg", action="append", default=[], help="Extra argument passed to clingo (repeatable)")
     ap.add_argument(
+        "--split-width", type=int, default=int(os.environ.get("SETLAH_SPLIT_WIDTH", "0")),
+        help="Rule decomposition (direct lowering only): split an integrity constraint with more than N variables "
+             "along a tree decomposition of its variable graph; 0 disables (default)",
+    )
+    ap.add_argument(
         "--lowering",
         choices=["direct", "egglog"],
         default=os.environ.get("SETLAH_LOWERING", "direct"),
@@ -79,11 +84,10 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         from setlah.rewrite.rw import Rewriter as front
-    rw = front(
-        verbose=args.verbose,
-        entailment_elim=args.entailment_elim,
-        enable_cost_conversion=args.cost_conversion,
-    )
+    kwargs = dict(verbose=args.verbose, entailment_elim=args.entailment_elim, enable_cost_conversion=args.cost_conversion)
+    if args.lowering == "direct":
+        kwargs["split_width"] = args.split_width
+    rw = front(**kwargs)
     if args.verbose:
         rewritten = rw.rewrite_program(program, convert_only=False)
         print(f"Total rewriting time: {time.perf_counter() - t0:.3f}s")
