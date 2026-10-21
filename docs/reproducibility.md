@@ -15,7 +15,7 @@ of the commit named below, so a reproduction only needs the commit.
 
 Not every cell the paper cites ran on ef262db. The compiled column of the paper's "attachments" table ran on
 `32b5b8a`, PORTUS on `48a53f1`, the OLSQ rows on `bc0e5c7`, and the attached arms on `4df62c7`; the tables below say
-which. The study repository's `PROVENANCE.md` maps every table of record to its snapshot, and its
+which. Every branch and tag named here is on the public remote (pushed 2026-10-21). The study repository's `PROVENANCE.md` maps every table of record to its snapshot, and its
 `reproduce/make_snapshots.sh` rebuilds all of them from this repository.
 
 The tip of `order-sorts` (and of `direct-lowering`, the same commit) differs
@@ -59,7 +59,7 @@ Three older copies: the study's `setlah-direct` is `4df62c7` (direct-lowering ti
 of 2026-09-08; the attached arms and the DPQA negative entry), `setlah-frozen` is
 `e6a6b66` (lean4-binding tip of 2026-09-05, the egglog-era compiler used for the
 study's first three weeks), and `setlah-bc0e5c7` is `bc0e5c7` (lean4-binding,
-2026-09-03; the OLSQ tables, and the only snapshot commit already on the public remote).
+2026-09-03; the OLSQ tables).
 
 ## Optional solvers and versions
 
